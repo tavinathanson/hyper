@@ -44,6 +44,7 @@ function replaceText() {
           responsePartialKeyEndIndex,
           responsePartialValueEndIndex - responsePartialKeyEndIndex);
         element.replaceText(".*", responseValue);
+        element.setUnderline(false);
       }
     }
   }
