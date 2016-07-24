@@ -45,6 +45,7 @@ function replaceText() {
           responsePartialValueEndIndex - responsePartialKeyEndIndex);
         element.replaceText(".*", responseValue);
         element.setUnderline(false);
+        element.setForegroundColor("#000000");
       }
     }
   }
