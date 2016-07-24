@@ -6,7 +6,10 @@ var GITHUB_CLIENT_SECRET = scriptProperties.getProperty("GITHUB_CLIENT_SECRET");
  * Creates a menu entry in the Google Docs UI when the document is opened.
  */
 function onOpen(e) {
-  replaceText();
+  showSidebar();
+  DocumentApp.getUi().createAddonMenu()
+    .addItem('Start', 'replaceText')
+    .addToUi();
 }
 
 /**
