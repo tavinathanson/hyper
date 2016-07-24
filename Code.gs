@@ -1,11 +1,13 @@
-var scriptProperties = PropertiesService.getScriptProperties();
-var GITHUB_CLIENT_ID = scriptProperties.getProperty("GITHUB_CLIENT_ID");
-var GITHUB_CLIENT_SECRET = scriptProperties.getProperty("GITHUB_CLIENT_SECRET");
+var GITHUB_CLIENT_ID;
+var GITHUB_CLIENT_SECRET;
 
 /**
  * Creates a menu entry in the Google Docs UI when the document is opened.
  */
 function onOpen(e) {
+  var scriptProperties = PropertiesService.getScriptProperties();
+  GITHUB_CLIENT_ID = scriptProperties.getProperty("GITHUB_CLIENT_ID");
+  GITHUB_CLIENT_SECRET = scriptProperties.getProperty("GITHUB_CLIENT_SECRET");
   showSidebar();
   DocumentApp.getUi().createAddonMenu()
     .addItem('Hyperize Links', 'replaceText')
