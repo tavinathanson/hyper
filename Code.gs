@@ -8,7 +8,7 @@ var GITHUB_CLIENT_SECRET = scriptProperties.getProperty("GITHUB_CLIENT_SECRET");
 function onOpen(e) {
   showSidebar();
   DocumentApp.getUi().createAddonMenu()
-    .addItem('Start', 'replaceText')
+    .addItem('Hyperize Links', 'replaceText')
     .addToUi();
 }
 
@@ -24,9 +24,9 @@ function replaceText() {
   for (var i = 0; i < elements.length; i++) {
     element = elements[i];
     url = element.getLinkUrl(0);
-    if (url.indexOf("http://hammerlab.org/linker") == 0) {
-      var key = url.split("http://hammerlab.org/linker/")[1].split("/http")[0]
-      var realUrl = "http" + url.split("http://hammerlab.org/linker/")[1].split("/http")[1];
+    if (url.indexOf("?hyper=") != -1) {
+      var key = url.split("?hyper=")[1]
+      var realUrl = url.split("?hyper=")[0]
       var response = null;
       if (realUrl.indexOf("https://github.com") == 0) {
         response = run(realUrl);
