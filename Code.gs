@@ -41,10 +41,10 @@ function hideHyperElements() {
  * Set hyper elements to a particular color.
  */
 function colorHyperElements(color) {
-  var elements = getAllHyperLinks();
-  for (var i = 0; i < elements.length; i++) {
-    var element = elements[i];
-    element.setForegroundColor(color);
+  var links = getAllHyperLinks();
+  for (var i = 0; i < links.length; i++) {
+    var link = links[i];
+    link.element.setForegroundColor(link.startOffset, link.endOffsetInclusive, color);
   }
 }
 
@@ -78,9 +78,10 @@ function hyperize() {
       link.element.deleteText(link.startOffset, link.endOffsetInclusive);
       link.element.insertText(link.startOffset, responseValue);
       var newEndOffsetInclusive = link.startOffset + responseValue.length - 1;
-      link.element.setLinkUrl(link.startOffset, newEndOffsetInclusive, link.url);
-      link.element.setUnderline(link.startOffset, newEndOffsetInclusive, false);
-      link.element.setForegroundColor(link.startOffset, newEndOffsetInclusive,
+      link.endOffsetInclusive = newEndOffsetInclusive;
+      link.element.setLinkUrl(link.startOffset, link.endOffsetInclusive, link.url);
+      link.element.setUnderline(link.startOffset, link.endOffsetInclusive, false);
+      link.element.setForegroundColor(link.startOffset, link.endOffsetInclusive,
                                       HYPERIZED_COLOR);
     }
   }
