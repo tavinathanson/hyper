@@ -2,6 +2,8 @@ var scriptProperties = PropertiesService.getScriptProperties();
 var GITHUB_CLIENT_ID = scriptProperties.getProperty("GITHUB_CLIENT_ID");
 var GITHUB_CLIENT_SECRET = scriptProperties.getProperty("GITHUB_CLIENT_SECRET");
 
+var HYPERIZED_COLOR = "#cc0099";
+
 /**
  * Creates a menu entry in the Google Docs UI when the document is opened.
  */
@@ -10,6 +12,8 @@ function onOpen(e) {
   waitForAccess();
   DocumentApp.getUi().createAddonMenu()
     .addItem("Hyperize Links", "replaceText")
+    .addItem("Hide Hyper Links", "hideHyperElements")
+    .addItem("Show Hyper Links", "showHyperElements")
     .addToUi();
   var app = UiApp.getActiveApplication();
   app.close();
@@ -22,36 +26,63 @@ function onInstall(e) {
   onOpen(e);
 }
 
+function showHyperElements() {
+  colorHyperElements(HYPERIZED_COLOR);
+}
+
+function hideHyperElements() {
+  colorHyperElements("#000000");
+}
+
+function colorHyperElements(color) {
+  var elements = getAllHyperElements();
+  for (var i = 0; i < elements.length; i++) {
+    var element = elements[i];
+    element.setForegroundColor(color);
+  }
+}
+
 function replaceText() {
-  var elements = getAllTextElementsWithUrls();
+  var elements = getAllHyperElements();
   for (var i = 0; i < elements.length; i++) {
     element = elements[i];
     url = element.getLinkUrl(0);
-    if (url.indexOf("?hyper=") != -1) {
-      var key = url.split("?hyper=")[1]
-      var realUrl = url.split("?hyper=")[0]
-      var response = null;
-      if (realUrl.indexOf("https://github.com") == 0) {
-        response = fetchGitHubUrl(realUrl);
-      }
-      else {
-        response = UrlFetchApp.fetch(realUrl).getContentText();
-      }
-      var responseKey = "{{{" + key + ":";
-      var responseKeyIndex = response.indexOf(responseKey);
-      if (responseKeyIndex != -1) {
-        responsePartial = response.substr(responseKeyIndex);
-        responsePartialKeyEndIndex = responseKey.length;
-        responsePartialValueEndIndex = responsePartial.indexOf("}}}");
-        responseValue = responsePartial.substr(
-          responsePartialKeyEndIndex,
-          responsePartialValueEndIndex - responsePartialKeyEndIndex);
-        element.replaceText(".*", responseValue);
-        element.setUnderline(false);
-        element.setForegroundColor("#000000");
-      }
+    var key = url.split("?hyper=")[1]
+    var realUrl = url.split("?hyper=")[0]
+    var response = null;
+    if (realUrl.indexOf("https://github.com") == 0) {
+      response = fetchGitHubUrl(realUrl);
+    }
+    else {
+      response = UrlFetchApp.fetch(realUrl).getContentText();
+    }
+    var responseKey = "{{{" + key + ":";
+    var responseKeyIndex = response.indexOf(responseKey);
+    if (responseKeyIndex != -1) {
+      responsePartial = response.substr(responseKeyIndex);
+      responsePartialKeyEndIndex = responseKey.length;
+      responsePartialValueEndIndex = responsePartial.indexOf("}}}");
+      responseValue = responsePartial.substr(
+        responsePartialKeyEndIndex,
+        responsePartialValueEndIndex - responsePartialKeyEndIndex);
+      element.replaceText(".*", responseValue);
+      element.setUnderline(false);
+      element.setForegroundColor(HYPERIZED_COLOR);
     }
   }
+}
+
+function getAllHyperElements() {
+  var elements = getAllTextElementsWithUrls();
+  var hyperElements = [];
+  for (var i = 0; i < elements.length; i++) {
+    var element = elements[i];
+    var url = element.getLinkUrl(0);
+    if (url.indexOf("?hyper=") != -1) {
+      hyperElements.push(element);
+    }
+  }
+  return hyperElements;
 }
 
 function getAllTextElementsWithUrls(node) {
