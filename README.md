@@ -17,4 +17,9 @@ Usage
 * Go to `Add-ons -> Hyper -> Hyperize Links` in your Google Doc, and watch the text of your hyperlink transform into the data. For example, if using the above hyperlink, into `median 234 (range 100 - 423)`.
 * When the data updates, simply Hyperize again.
 
+Screencast
+----------
+
+Check out the screencast [here](http://quick.as/qr3pf9pwk).
+
 Icons made by [SimpleIcon](http://www.flaticon.com/authors/simpleicon) from [Flaticon](http://www.flaticon.com), licensed by [CC 3.0 BY](http://creativecommons.org/licenses/by/3.0/).
