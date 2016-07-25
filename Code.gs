@@ -1,17 +1,18 @@
-var GITHUB_CLIENT_ID;
-var GITHUB_CLIENT_SECRET;
+var scriptProperties = PropertiesService.getScriptProperties();
+var GITHUB_CLIENT_ID = scriptProperties.getProperty("GITHUB_CLIENT_ID");
+var GITHUB_CLIENT_SECRET = scriptProperties.getProperty("GITHUB_CLIENT_SECRET");
 
 /**
  * Creates a menu entry in the Google Docs UI when the document is opened.
  */
 function onOpen(e) {
-  var scriptProperties = PropertiesService.getScriptProperties();
-  GITHUB_CLIENT_ID = scriptProperties.getProperty("GITHUB_CLIENT_ID");
-  GITHUB_CLIENT_SECRET = scriptProperties.getProperty("GITHUB_CLIENT_SECRET");
-  showSidebar();
+  askForAccess();
+  waitForAccess();
   DocumentApp.getUi().createAddonMenu()
     .addItem('Hyperize Links', 'replaceText')
     .addToUi();
+  var app = UiApp.getActiveApplication();
+  app.close();
 }
 
 /**
@@ -31,7 +32,7 @@ function replaceText() {
       var realUrl = url.split("?hyper=")[0]
       var response = null;
       if (realUrl.indexOf("https://github.com") == 0) {
-        response = run(realUrl);
+        response = fetchGitHubUrl(realUrl);
       }
       else {
         response = UrlFetchApp.fetch(realUrl).getContentText();
@@ -71,7 +72,7 @@ function getAllTextElementsWithUrls(node) {
   return elements;
 }
 
-function run(gitHubUrl) {
+function fetchGitHubUrl(gitHubUrl) {
   var service = getGitHubService();
   if (service.hasAccess()) {
     gitHubUrlParts = gitHubUrl.split("/");
@@ -90,11 +91,6 @@ function run(gitHubUrl) {
       }
     });
     return response.getContentText();
-  } else {
-    showSidebar();
-    if (service.hasAccess()) {
-      return run();
-    }
   }
 }
 
@@ -121,16 +117,23 @@ function getGitHubService() {
     .setParam('allow_signup', true);
 }
 
-function showSidebar() {
-  var service = getGitHubService();
-  if (!service.hasAccess()) {
-    var authorizationUrl = service.getAuthorizationUrl();
+function askForAccess() {
+  var gitHubService = getGitHubService();
+  if (!gitHubService.hasAccess()) {
+    var authorizationUrl = gitHubService.getAuthorizationUrl();
     var template = HtmlService.createTemplate(
-      '<a href="<?= authorizationUrl ?>" target="_blank">Authorize</a>. ' +
+      '<a onclick="google.script.host.close()" href="<?= authorizationUrl ?>" target="_blank">Authorize</a>. ' +
         'Reopen the sidebar when the authorization is complete.');
     template.authorizationUrl = authorizationUrl;
     var page = template.evaluate();
-    DocumentApp.getUi().showSidebar(page);
+    DocumentApp.getUi().showModalDialog(page, "Authorize GitHub");
+  }
+}
+
+function waitForAccess() {
+  var gitHubService = getGitHubService();
+  while (!gitHubService.hasAccess()) {
+    Utilities.sleep(1000);
   }
 }
 
