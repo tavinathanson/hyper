@@ -1,7 +1,3 @@
-var scriptProperties = PropertiesService.getScriptProperties();
-var GITHUB_CLIENT_ID = scriptProperties.getProperty("GITHUB_CLIENT_ID");
-var GITHUB_CLIENT_SECRET = scriptProperties.getProperty("GITHUB_CLIENT_SECRET");
-
 var HYPERIZED_COLOR = "#cc0099";
 
 /**
@@ -12,8 +8,8 @@ function onOpen(e) {
     .addItem("Hyperize Links", "hyperize")
     .addItem("Hide Hyper Links", "hideHyperElements")
     .addItem("Show Hyper Links", "showHyperElements")
+    .addItem("Remove GitHub Authorization", "reset")
     .addToUi();
-  askForGitHubAccess();
 }
 
 /**
@@ -52,6 +48,7 @@ function colorHyperElements(color) {
  * Replace hyper link elements with the text that they point to.
  */
 function hyperize() {
+  askForGitHubAccess();
   waitForGitHubAccess();
   var links = getAllHyperLinks();
   for (var i = 0; i < links.length; i++) {
@@ -201,11 +198,14 @@ function reset() {
  * Configures the GitHub authorization service.
  */
 function getGitHubService() {
+  var scriptProperties = PropertiesService.getScriptProperties();
+  var gitHubClientId = scriptProperties.getProperty("GITHUB_CLIENT_ID");
+  var gitHubClientSecret = scriptProperties.getProperty("GITHUB_CLIENT_SECRET");
   return OAuth2.createService("GitHub")
     .setAuthorizationBaseUrl("https://github.com/login/oauth/authorize")
     .setTokenUrl("https://github.com/login/oauth/access_token")
-    .setClientId(GITHUB_CLIENT_ID)
-    .setClientSecret(GITHUB_CLIENT_SECRET)
+    .setClientId(gitHubClientId)
+    .setClientSecret(gitHubClientSecret)
     .setCallbackFunction("authCallback")
     .setPropertyStore(PropertiesService.getUserProperties())
     .setScope("repo") // Need access to code
