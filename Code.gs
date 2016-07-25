@@ -8,10 +8,10 @@ var HYPERIZED_COLOR = "#cc0099";
  * Creates a menu entry in the Google Docs UI when the document is opened.
  */
 function onOpen(e) {
-  askForAccess();
-  waitForAccess();
+  askForGitHubAccess();
+  waitForGitHubAccess();
   DocumentApp.getUi().createAddonMenu()
-    .addItem("Hyperize Links", "replaceText")
+    .addItem("Hyperize Links", "hyperize")
     .addItem("Hide Hyper Links", "hideHyperElements")
     .addItem("Show Hyper Links", "showHyperElements")
     .addToUi();
@@ -26,14 +26,23 @@ function onInstall(e) {
   onOpen(e);
 }
 
+/**
+ * Color hyper elements with the hyper color.
+ */
 function showHyperElements() {
   colorHyperElements(HYPERIZED_COLOR);
 }
 
+/**
+ * Set hyper elements back to black.
+ */
 function hideHyperElements() {
   colorHyperElements("#000000");
 }
 
+/**
+ * Set hyper elements to a particular color.
+ */
 function colorHyperElements(color) {
   var elements = getAllHyperElements();
   for (var i = 0; i < elements.length; i++) {
@@ -42,7 +51,10 @@ function colorHyperElements(color) {
   }
 }
 
-function replaceText() {
+/**
+ * Replace hyper link elements with the text that they point to.
+ */
+function hyperize() {
   var elements = getAllHyperElements();
   for (var i = 0; i < elements.length; i++) {
     element = elements[i];
@@ -72,6 +84,9 @@ function replaceText() {
   }
 }
 
+/**
+ * Returns a list of all hyper elements.
+ */
 function getAllHyperElements() {
   var elements = getAllTextElementsWithUrls();
   var hyperElements = [];
@@ -85,6 +100,10 @@ function getAllHyperElements() {
   return hyperElements;
 }
 
+/**
+ * Returns a list of all text elements that have a link. Note that text
+ * elements with multiple links will only count as one.
+ */
 function getAllTextElementsWithUrls(node) {
   var elements = [];
   node = node || DocumentApp.getActiveDocument().getBody();
@@ -103,6 +122,9 @@ function getAllTextElementsWithUrls(node) {
   return elements;
 }
 
+/**
+ * Use GitHub authorization to fetch the contents of a GitHub URL.
+ */
 function fetchGitHubUrl(gitHubUrl) {
   var service = getGitHubService();
   if (service.hasAccess()) {
@@ -134,7 +156,7 @@ function reset() {
 }
 
 /**
- * Configures the service.
+ * Configures the GitHub authorization service.
  */
 function getGitHubService() {
   return OAuth2.createService("GitHub")
@@ -148,7 +170,10 @@ function getGitHubService() {
     .setParam("allow_signup", true);
 }
 
-function askForAccess() {
+/**
+ * Prompts the user for a modal dialog to gain GitHub access.
+ */
+function askForGitHubAccess() {
   var gitHubService = getGitHubService();
   if (!gitHubService.hasAccess()) {
     var authorizationUrl = gitHubService.getAuthorizationUrl();
@@ -160,7 +185,10 @@ function askForAccess() {
   }
 }
 
-function waitForAccess() {
+/**
+ * Blocks until GitHub access is established.
+ */
+function waitForGitHubAccess() {
   var gitHubService = getGitHubService();
   while (!gitHubService.hasAccess()) {
     Utilities.sleep(1000);
@@ -168,14 +196,16 @@ function waitForAccess() {
 }
 
 /**
- * Handles the OAuth callback.
+ * Handles the GitHub OAuth callback.
  */
 function authCallback(request) {
   var service = getGitHubService();
   var authorized = service.handleCallback(request);
-  if (authorized) {
-    return HtmlService.createHtmlOutput("GitHub authorization complete. You may return to the document.");
-  } else {
-    return HtmlService.createHtmlOutput("GitHub authorization was not successful.");
-  }
+  var template = HtmlService.createTemplateFromFile("github_oauth_callback");
+  var callbackMessage = template.callbackMessage = authorized ?
+      "GitHub authorization complete. You may return to the document." :
+      "GitHub authorization was not successful.";
+  template.callbackMessage = callbackMessage;
+  var page = template.evaluate();
+  return page;
 }
