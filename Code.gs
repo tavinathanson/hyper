@@ -9,7 +9,7 @@ function onOpen(e) {
   askForAccess();
   waitForAccess();
   DocumentApp.getUi().createAddonMenu()
-    .addItem('Hyperize Links', 'replaceText')
+    .addItem("Hyperize Links", "replaceText")
     .addToUi();
   var app = UiApp.getActiveApplication();
   app.close();
@@ -106,27 +106,26 @@ function reset() {
  * Configures the service.
  */
 function getGitHubService() {
-  return OAuth2.createService('GitHub')
-    .setAuthorizationBaseUrl('https://github.com/login/oauth/authorize')
+  return OAuth2.createService("GitHub")
+    .setAuthorizationBaseUrl("https://github.com/login/oauth/authorize")
     .setTokenUrl("https://github.com/login/oauth/access_token")
     .setClientId(GITHUB_CLIENT_ID)
     .setClientSecret(GITHUB_CLIENT_SECRET)
-    .setCallbackFunction('authCallback')
+    .setCallbackFunction("authCallback")
     .setPropertyStore(PropertiesService.getUserProperties())
-    .setScope('repo') // Need access to code
-    .setParam('allow_signup', true);
+    .setScope("repo") // Need access to code
+    .setParam("allow_signup", true);
 }
 
 function askForAccess() {
   var gitHubService = getGitHubService();
   if (!gitHubService.hasAccess()) {
     var authorizationUrl = gitHubService.getAuthorizationUrl();
-    var template = HtmlService.createTemplate(
-      '<a onclick="google.script.host.close()" href="<?= authorizationUrl ?>" target="_blank">Authorize</a>. ' +
-        'Reopen the sidebar when the authorization is complete.');
+    // Close the modal after authorization is attempted.
+    var template = HtmlService.createTemplateFromFile("github_auth");
     template.authorizationUrl = authorizationUrl;
-    var page = template.evaluate();
-    DocumentApp.getUi().showModalDialog(page, "Authorize GitHub");
+    var page = template.evaluate().setHeight(50);
+    DocumentApp.getUi().showModalDialog(page, "Hyper: Authorize GitHub");
   }
 }
 
@@ -144,8 +143,8 @@ function authCallback(request) {
   var service = getGitHubService();
   var authorized = service.handleCallback(request);
   if (authorized) {
-    return HtmlService.createHtmlOutput('Success!');
+    return HtmlService.createHtmlOutput("GitHub authorization complete. You may return to the document.");
   } else {
-    return HtmlService.createHtmlOutput('Denied');
+    return HtmlService.createHtmlOutput("GitHub authorization was not successful.");
   }
 }
