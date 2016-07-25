@@ -54,7 +54,6 @@ function colorHyperElements(color) {
 function hyperize() {
   waitForGitHubAccess();
   var links = getAllHyperLinks();
-  Logger.log(links);
   for (var i = 0; i < links.length; i++) {
     link = links[i];
     url = link.url;
@@ -161,6 +160,9 @@ function getAllLinks(element) {
       else {
         if (inUrl) {
           inUrl = false;
+          if (curUrl.endOffsetInclusive === undefined) {
+            curUrl.endOffsetInclusive = curUrl.startOffset;
+          }
           links.push(curUrl);
           curUrl = {};
         }
@@ -169,6 +171,9 @@ function getAllLinks(element) {
     // Needed for the case when no non-link character comes after a link.
     if (url != null && curUrl != null) {
       inUrl = false;
+      if (curUrl.endOffsetInclusive === undefined) {
+        curUrl.endOffsetInclusive = curUrl.startOffset;
+      }
       links.push(curUrl);
       curUrl = {};
     }
