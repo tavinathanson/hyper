@@ -8,15 +8,12 @@ var HYPERIZED_COLOR = "#cc0099";
  * Creates a menu entry in the Google Docs UI when the document is opened.
  */
 function onOpen(e) {
-  askForGitHubAccess();
-  waitForGitHubAccess();
   DocumentApp.getUi().createAddonMenu()
     .addItem("Hyperize Links", "hyperize")
     .addItem("Hide Hyper Links", "hideHyperElements")
     .addItem("Show Hyper Links", "showHyperElements")
     .addToUi();
-  var app = UiApp.getActiveApplication();
-  app.close();
+  askForGitHubAccess();
 }
 
 /**
@@ -55,6 +52,7 @@ function colorHyperElements(color) {
  * Replace hyper link elements with the text that they point to.
  */
 function hyperize() {
+  waitForGitHubAccess();
   var elements = getAllHyperElements();
   for (var i = 0; i < elements.length; i++) {
     element = elements[i];
