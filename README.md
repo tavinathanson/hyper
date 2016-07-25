@@ -6,7 +6,7 @@ Hyper lets you automatically populate Google Docs with data from arbitrary URLs.
 Installation
 ------------
 
-The easiest way to install `Hyper` is via the Google Docs add-on store. Please reply [here](https://github.com/tavinathanson/hyper/issues/1) to be added as a private tester so that you can install `Hyper` this way.
+The easiest way to install `Hyper` is [here](https://chrome.google.com/webstore/detail/hyper/lbiblkbfmhelinhcobciimdmcnngcffp?utm_source=permalink) via the Google Docs add-on store. Please reply [here](https://github.com/tavinathanson/hyper/issues/1) to be added as a private tester so that you can install `Hyper` this way.
 
 Usage
 -----
