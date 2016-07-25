@@ -41,7 +41,7 @@ function hideHyperElements() {
  * Set hyper elements to a particular color.
  */
 function colorHyperElements(color) {
-  var elements = getAllHyperElements();
+  var elements = getAllHyperLinks();
   for (var i = 0; i < elements.length; i++) {
     var element = elements[i];
     element.setForegroundColor(color);
@@ -53,10 +53,11 @@ function colorHyperElements(color) {
  */
 function hyperize() {
   waitForGitHubAccess();
-  var elements = getAllHyperElements();
-  for (var i = 0; i < elements.length; i++) {
-    element = elements[i];
-    url = element.getLinkUrl(0);
+  var links = getAllHyperLinks();
+  Logger.log(links);
+  for (var i = 0; i < links.length; i++) {
+    link = links[i];
+    url = link.url;
     var key = url.split("?hyper=")[1]
     var realUrl = url.split("?hyper=")[0]
     var response = null;
@@ -75,9 +76,13 @@ function hyperize() {
       responseValue = responsePartial.substr(
         responsePartialKeyEndIndex,
         responsePartialValueEndIndex - responsePartialKeyEndIndex);
-      element.replaceText(".*", responseValue);
-      element.setUnderline(false);
-      element.setForegroundColor(HYPERIZED_COLOR);
+      link.element.deleteText(link.startOffset, link.endOffsetInclusive);
+      link.element.insertText(link.startOffset, responseValue);
+      var newEndOffsetInclusive = link.startOffset + responseValue.length - 1;
+      link.element.setLinkUrl(link.startOffset, newEndOffsetInclusive, link.url);
+      link.element.setUnderline(link.startOffset, newEndOffsetInclusive, false);
+      link.element.setForegroundColor(link.startOffset, newEndOffsetInclusive,
+                                      HYPERIZED_COLOR);
     }
   }
 }
@@ -85,39 +90,17 @@ function hyperize() {
 /**
  * Returns a list of all hyper elements.
  */
-function getAllHyperElements() {
-  var elements = getAllTextElementsWithUrls();
-  var hyperElements = [];
-  for (var i = 0; i < elements.length; i++) {
-    var element = elements[i];
-    var url = element.getLinkUrl(0);
+function getAllHyperLinks() {
+  var links = getAllLinks();
+  var hyperLinks = [];
+  for (var i = 0; i < links.length; i++) {
+    var link = links[i];
+    var url = link.url;
     if (url.indexOf("?hyper=") != -1) {
-      hyperElements.push(element);
+      hyperLinks.push(link);
     }
   }
-  return hyperElements;
-}
-
-/**
- * Returns a list of all text elements that have a link. Note that text
- * elements with multiple links will only count as one.
- */
-function getAllTextElementsWithUrls(node) {
-  var elements = [];
-  node = node || DocumentApp.getActiveDocument().getBody();
-  if (node.getType() === DocumentApp.ElementType.TEXT) {
-    var url = node.getLinkUrl(0);
-    if (url != null) {
-      elements.push(node);
-    }
-  }
-  else {
-    var numChildren = node.getNumChildren();
-    for (var i = 0; i < numChildren; i++) {
-      elements = elements.concat(getAllTextElementsWithUrls(node.getChild(i)));
-    }
-  }
-  return elements;
+  return hyperLinks;
 }
 
 /**
@@ -143,6 +126,61 @@ function fetchGitHubUrl(gitHubUrl) {
     });
     return response.getContentText();
   }
+}
+
+/**
+ * Get all links from the document, which is tricky because links might be only
+ * a portion of an element.
+ *
+ * Mostly taken from https://gist.github.com/mogsdad/6518632#file-getalllinks-js.
+ * Added a bug fix to the case where no non-link character follows a link.
+ */
+function getAllLinks(element) {
+  var links = [];
+  element = element || DocumentApp.getActiveDocument().getBody();
+  if (element.getType() === DocumentApp.ElementType.TEXT) {
+    var textObj = element.editAsText();
+    var text = element.getText();
+    var inUrl = false;
+    var url = null;
+    var curUrl = null;
+    for (var ch = 0; ch < text.length; ch++) {
+      url = textObj.getLinkUrl(ch);
+      if (url != null) {
+        if (!inUrl) {
+          inUrl = true;
+          curUrl = {};
+          curUrl.element = element;
+          curUrl.url = String(url);
+          curUrl.startOffset = ch;
+        }
+        else {
+          curUrl.endOffsetInclusive = ch;
+        }
+      }
+      else {
+        if (inUrl) {
+          inUrl = false;
+          links.push(curUrl);
+          curUrl = {};
+        }
+      }
+    }
+    // Needed for the case when no non-link character comes after a link.
+    if (url != null && curUrl != null) {
+      inUrl = false;
+      links.push(curUrl);
+      curUrl = {};
+    }
+  }
+  else {
+    var numChildren = element.getNumChildren();
+    for (var i = 0; i < numChildren; i++) {
+      links = links.concat(getAllLinks(element.getChild(i)));
+    }
+  }
+
+  return links;
 }
 
 /**
