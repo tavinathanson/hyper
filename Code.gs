@@ -47,31 +47,51 @@ function colorHyperElements(color) {
 /**
  * Replace hyper link elements with the text that they point to.
  */
-function hyperize() {
+function hyperize(numTimes) {
+  numTimes = numTimes || 0;
+  // TODO: Add error.
+  if (numTimes > 1000) {
+    Logger.log("Too many iterations");
+    return;
+  }
   askForGitHubAccess();
   waitForGitHubAccess();
   var links = getAllHyperLinks();
   for (var i = 0; i < links.length; i++) {
-    link = links[i];
-    url = link.url;
-    var key = url.split("?hyper=")[1]
-    var realUrl = url.split("?hyper=")[0]
-    var response = null;
-    if (realUrl.indexOf("https://github.com") == 0) {
-      response = fetchGitHubUrl(realUrl);
+    var link = links[i];
+    if (hyperizeOne(link)) {
+      hyperize(numTimes + 1);
+      break;
     }
-    else {
-      response = UrlFetchApp.fetch(realUrl).getContentText();
-    }
-    var responseKey = "{{{" + key + ":";
-    var responseKeyIndex = response.indexOf(responseKey);
-    if (responseKeyIndex != -1) {
-      responsePartial = response.substr(responseKeyIndex);
-      responsePartialKeyEndIndex = responseKey.length;
-      responsePartialValueEndIndex = responsePartial.indexOf("}}}");
-      responseValue = responsePartial.substr(
-        responsePartialKeyEndIndex,
-        responsePartialValueEndIndex - responsePartialKeyEndIndex);
+  }
+}
+
+/**
+ * Replace a single hyper link element with the text that it points to.
+ *
+ * Return true if text indeed changed.
+ */
+function hyperizeOne(link) {
+  var url = link.url;
+  var key = url.split("?hyper=")[1]
+  var realUrl = url.split("?hyper=")[0]
+  var response = null;
+  if (realUrl.indexOf("https://github.com") === 0) {
+    response = fetchGitHubUrl(realUrl);
+  }
+  else {
+    response = UrlFetchApp.fetch(realUrl).getContentText();
+  }
+  var responseKey = "{{{" + key + ":";
+  var responseKeyIndex = response.indexOf(responseKey);
+  if (responseKeyIndex != -1) {
+    responsePartial = response.substr(responseKeyIndex);
+    responsePartialKeyEndIndex = responseKey.length;
+    responsePartialValueEndIndex = responsePartial.indexOf("}}}");
+    responseValue = responsePartial.substr(
+      responsePartialKeyEndIndex,
+      responsePartialValueEndIndex - responsePartialKeyEndIndex);
+    if (link.element.getText().slice(link.startOffset, link.endOffsetInclusive + 1) !== responseValue) {
       link.element.deleteText(link.startOffset, link.endOffsetInclusive);
       link.element.insertText(link.startOffset, responseValue);
       var newEndOffsetInclusive = link.startOffset + responseValue.length - 1;
@@ -80,8 +100,11 @@ function hyperize() {
       link.element.setUnderline(link.startOffset, link.endOffsetInclusive, false);
       link.element.setForegroundColor(link.startOffset, link.endOffsetInclusive,
                                       HYPERIZED_COLOR);
+      return true;
     }
   }
+
+  return false;
 }
 
 /**
