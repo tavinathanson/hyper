@@ -73,8 +73,7 @@ function hyperize(numTimes) {
  */
 function hyperizeOne(link) {
   var url = link.url;
-  var key = url.split("?hyper=")[1]
-  var realUrl = url.split("?hyper=")[0]
+  var realUrl = url.split("?hyper")[0]
   var response = null;
   if (realUrl.indexOf("https://github.com") === 0) {
     response = fetchGitHubUrl(realUrl);
@@ -82,29 +81,91 @@ function hyperizeOne(link) {
   else {
     response = UrlFetchApp.fetch(realUrl).getContentText();
   }
-  var responseKey = "{{{" + key + ":";
-  var responseKeyIndex = response.indexOf(responseKey);
-  if (responseKeyIndex != -1) {
-    responsePartial = response.substr(responseKeyIndex);
-    responsePartialKeyEndIndex = responseKey.length;
-    responsePartialValueEndIndex = responsePartial.indexOf("}}}");
-    responseValue = responsePartial.substr(
-      responsePartialKeyEndIndex,
-      responsePartialValueEndIndex - responsePartialKeyEndIndex);
-    if (link.element.getText().slice(link.startOffset, link.endOffsetInclusive + 1) !== responseValue) {
-      link.element.deleteText(link.startOffset, link.endOffsetInclusive);
-      link.element.insertText(link.startOffset, responseValue);
-      var newEndOffsetInclusive = link.startOffset + responseValue.length - 1;
-      link.endOffsetInclusive = newEndOffsetInclusive;
-      link.element.setLinkUrl(link.startOffset, link.endOffsetInclusive, link.url);
-      link.element.setUnderline(link.startOffset, link.endOffsetInclusive, false);
-      link.element.setForegroundColor(link.startOffset, link.endOffsetInclusive,
-                                      HYPERIZED_COLOR);
-      return true;
+
+  if (url.indexOf("?hyper=") !== -1) {
+    var key = url.split("?hyper=")[1]
+    var responseKey = "{{{" + key + ":";
+    var responseKeyIndex = response.indexOf(responseKey);
+    if (responseKeyIndex != -1) {
+      var responsePartial = response.substr(responseKeyIndex);
+      var responsePartialKeyEndIndex = responseKey.length;
+      var responsePartialValueEndIndex = responsePartial.indexOf("}}}");
+      var responseValue = responsePartial.substr(
+        responsePartialKeyEndIndex,
+        responsePartialValueEndIndex - responsePartialKeyEndIndex);
+      if (link.element.getText().slice(link.startOffset, link.endOffsetInclusive + 1) !== responseValue) {
+        link.element.deleteText(link.startOffset, link.endOffsetInclusive);
+        link.element.insertText(link.startOffset, responseValue);
+        var newEndOffsetInclusive = link.startOffset + responseValue.length - 1;
+        link.endOffsetInclusive = newEndOffsetInclusive;
+        link.element.setLinkUrl(link.startOffset, link.endOffsetInclusive, link.url);
+        link.element.setUnderline(link.startOffset, link.endOffsetInclusive, false);
+        link.element.setForegroundColor(link.startOffset, link.endOffsetInclusive,
+                                        HYPERIZED_COLOR);
+        return true;
+      }
     }
   }
 
+  if (url.indexOf("?hyperimage=") !== -1) {
+    var key = url.split("?hyperimage=")[1]
+    var label = "{{{" + key + "}}}";
+
+    var responseJSON = JSON.parse(response);
+    var labelToImage = getAllResponseImages(response);
+
+    var body = DocumentApp.getActiveDocument().getBody();
+    body.getChild(0).asParagraph().appendInlineImage(labelToImage[label]);
+
+    return false;
+  }
+
   return false;
+}
+
+function getAllResponseImages(response) {
+  var responseJSON = JSON.parse(response);
+  var cells = responseJSON.cells;
+  var imagesAndLabels = [];
+  for (var i = 0; i < cells.length; i++) {
+    var cell = cells[i];
+    var outputs = cell.outputs;
+    for (var j = 0; j < outputs.length; j++) {
+      var output = outputs[j];
+      // TODO: Use better contains.
+      if ("data" in output) {
+        if ("image/png" in output["data"]) {
+          var decoded = Utilities.base64Decode(output["data"]["image/png"]);
+          var blob = Utilities.newBlob(decoded);
+          imagesAndLabels.push(blob);
+        }
+      }
+      if ("text" in output) {
+        var text = output["text"];
+        for (var k = 0; k < text.length; k++) {
+          var line = String(text[k]);
+          if (line.indexOf("{{{") !== -1 && line.indexOf("}}}") !== -1) {
+            var startLabelIndex = line.indexOf("{{{");
+            var endLabelIndex = line.indexOf("}}}");
+            var label = line.slice(startLabelIndex, endLabelIndex + "}}}".length);
+            // Don't include non-image hyper labels
+            if (label.indexOf(":") === -1) {
+              imagesAndLabels.push(label);
+            }
+          }
+        }
+      }
+    }
+  }
+
+  var labelToImage = {};
+  for (var i = 0; i < imagesAndLabels.length / 2; i++) {
+    var label = imagesAndLabels[i * 2];
+    var image = imagesAndLabels[(i * 2) + 1];
+    labelToImage[label] = image;
+  }
+
+  return labelToImage;
 }
 
 /**
@@ -116,7 +177,7 @@ function getAllHyperLinks() {
   for (var i = 0; i < links.length; i++) {
     var link = links[i];
     var url = link.url;
-    if (url.indexOf("?hyper=") != -1) {
+    if (url.indexOf("?hyper") != -1) {
       hyperLinks.push(link);
     }
   }
