@@ -127,8 +127,10 @@ function hyperizeOne(link) {
 function getAllResponseImages(response) {
   var responseJSON = JSON.parse(response);
   var cells = responseJSON.cells;
-  var images = [];
+  var labelsToImages = {};
   var labels = [];
+  var lastLabel = null;
+  var lastImage = null;
   _.each(cells, function(cell) {
     var outputs = cell.outputs;
     _.each(outputs, function(output) {
@@ -137,7 +139,10 @@ function getAllResponseImages(response) {
         if ("image/png" in output["data"]) {
           var decoded = Utilities.base64Decode(output["data"]["image/png"]);
           var blob = Utilities.newBlob(decoded);
-          images.push(blob);
+          if (lastLabel !== null) {
+            labelsToImages[lastLabel] = blob;
+            lastLabel = null;
+          }
         }
       }
       if ("text" in output) {
@@ -151,6 +156,7 @@ function getAllResponseImages(response) {
             // Don't include non-image hyper labels
             if (label.indexOf(":") === -1) {
               labels.push(label);
+              lastLabel = label;
             }
           }
         });
@@ -158,7 +164,11 @@ function getAllResponseImages(response) {
     });
   });
 
-  return _.object(labels, images);
+  if (_.size(labels) !== _.size(labelsToImages)) {
+    throw new Error("Not every label corresponds to an image!");
+  }
+
+  return labelsToImages;
 }
 
 /**
