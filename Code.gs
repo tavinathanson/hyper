@@ -1,5 +1,8 @@
 var HYPERIZED_COLOR = "#cc0099";
 
+// Added using the project key in https://github.com/simula-innovation/gas-underscore
+var _ = Underscore.load();
+
 /**
  * Creates a menu entry in the Google Docs UI when the document is opened.
  */
@@ -38,10 +41,9 @@ function hideHyperElements() {
  */
 function colorHyperElements(color) {
   var links = getAllHyperLinks();
-  for (var i = 0; i < links.length; i++) {
-    var link = links[i];
+  _.each(links, function(link) {
     link.element.setForegroundColor(link.startOffset, link.endOffsetInclusive, color);
-  }
+  });
 }
 
 /**
@@ -57,13 +59,12 @@ function hyperize(numTimes) {
   askForGitHubAccess();
   waitForGitHubAccess();
   var links = getAllHyperLinks();
-  for (var i = 0; i < links.length; i++) {
-    var link = links[i];
+  _.each(links, function(link) {
     if (hyperizeOne(link)) {
       hyperize(numTimes + 1);
-      break;
+      return;
     }
-  }
+  });
 }
 
 /**
@@ -126,46 +127,38 @@ function hyperizeOne(link) {
 function getAllResponseImages(response) {
   var responseJSON = JSON.parse(response);
   var cells = responseJSON.cells;
-  var imagesAndLabels = [];
-  for (var i = 0; i < cells.length; i++) {
-    var cell = cells[i];
+  var images = [];
+  var labels = [];
+  _.each(cells, function(cell) {
     var outputs = cell.outputs;
-    for (var j = 0; j < outputs.length; j++) {
-      var output = outputs[j];
+    _.each(outputs, function(output) {
       // TODO: Use better contains.
       if ("data" in output) {
         if ("image/png" in output["data"]) {
           var decoded = Utilities.base64Decode(output["data"]["image/png"]);
           var blob = Utilities.newBlob(decoded);
-          imagesAndLabels.push(blob);
+          images.push(blob);
         }
       }
       if ("text" in output) {
         var text = output["text"];
-        for (var k = 0; k < text.length; k++) {
-          var line = String(text[k]);
+        _.each(text, function(line) {
+          var line = String(line);
           if (line.indexOf("{{{") !== -1 && line.indexOf("}}}") !== -1) {
             var startLabelIndex = line.indexOf("{{{");
             var endLabelIndex = line.indexOf("}}}");
             var label = line.slice(startLabelIndex, endLabelIndex + "}}}".length);
             // Don't include non-image hyper labels
             if (label.indexOf(":") === -1) {
-              imagesAndLabels.push(label);
+              labels.push(label);
             }
           }
-        }
+        });
       }
-    }
-  }
+    });
+  });
 
-  var labelToImage = {};
-  for (var i = 0; i < imagesAndLabels.length / 2; i++) {
-    var label = imagesAndLabels[i * 2];
-    var image = imagesAndLabels[(i * 2) + 1];
-    labelToImage[label] = image;
-  }
-
-  return labelToImage;
+  return _.object(labels, images);
 }
 
 /**
