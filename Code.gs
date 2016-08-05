@@ -200,7 +200,11 @@ function getAllLinks(element) {
     }
   }
   else {
-    var numChildren = element.getNumChildren();
+    var numChildren = 0;
+    try {
+      numChildren = element.getNumChildren();
+    }
+    catch (e) {}
     for (var i = 0; i < numChildren; i++) {
       links = links.concat(getAllLinks(element.getChild(i)));
     }
