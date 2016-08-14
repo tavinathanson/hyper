@@ -107,44 +107,52 @@ function hyperizeOne(link) {
           return true;
         }
       }
+      else {
+        // Weird case: image turns into text?
+      }
     }
-  }
+    // No hyper text label found? Look for images!
+    else {
+      var key = url.split("?hyper=")[1]
+      var label = "{{{" + key + "}}}";
 
-  if (url.indexOf("?hyperimage=") !== -1) {
-    var key = url.split("?hyperimage=")[1]
-    var label = "{{{" + key + "}}}";
+      var responseKeyIndex = response.indexOf(label);
+      if (responseKeyIndex != -1) {
+        var responseJSON = JSON.parse(response);
+        var labelToImage = getAllResponseImages(response);
+        var image = labelToImage[label];
 
-    var responseJSON = JSON.parse(response);
-    var labelToImage = getAllResponseImages(response);
-    var image = labelToImage[label];
+        // We can't insert an image into a Text element, so split the Text element into
+        // multiple elements and insert the image into the parent Paragraph element.
+        if (link.isText) {
+          var beforeImageText = link.element.getText().slice(0, link.startOffset);
+          var afterImageText = link.element.getText().slice(link.endOffsetInclusive + 1, link.element.getText().length);
+        }
+        var parentElement = link.element.getParent();
+        var childIndex = parentElement.getChildIndex(link.element);
+        // TODO: Something like...
+        // if (link.element.getText().slice(link.startOffset, link.endOffsetInclusive + 1) !== responseValue) {
+        parentElement.removeChild(link.element);
+        var indexIncrement = 0;
+        if (link.isText) {
+          parentElement.insertText(childIndex + indexIncrement, beforeImageText);
+          indexIncrement += 1;
+        }
+        var imageIndex = childIndex + indexIncrement;
+        parentElement.insertInlineImage(imageIndex, image);
+        indexIncrement += 1;
+        if (link.isText) {
+          parentElement.insertText(childIndex + indexIncrement, afterImageText);
+          indexIncrement += 1;
+        }
 
-    // We can't insert an image into a Text element, so split the Text element into
-    // multiple elements and insert the image into the parent Paragraph element.
-    if (link.isText) {
-      var beforeImageText = link.element.getText().slice(0, link.startOffset);
-      var afterImageText = link.element.getText().slice(link.endOffsetInclusive + 1, link.element.getText().length);
+        // Set the link of the image.
+        var imageElement = parentElement.getChild(imageIndex);
+        imageElement.setLinkUrl(link.url);
+
+        return false;
+      }
     }
-    var parentElement = link.element.getParent();
-    var childIndex = parentElement.getChildIndex(link.element);
-    parentElement.removeChild(link.element);
-    var indexIncrement = 0;
-    if (link.isText) {
-      parentElement.insertText(childIndex + indexIncrement, beforeImageText);
-      indexIncrement += 1;
-    }
-    var imageIndex = childIndex + indexIncrement;
-    parentElement.insertInlineImage(imageIndex, image);
-    indexIncrement += 1;
-    if (link.isText) {
-      parentElement.insertText(childIndex + indexIncrement, afterImageText);
-      indexIncrement += 1;
-    }
-
-    // Set the link of the image.
-    var imageElement = parentElement.getChild(imageIndex);
-    imageElement.setLinkUrl(link.url);
-
-    return false;
   }
 
   return false;
