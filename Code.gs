@@ -94,16 +94,18 @@ function hyperizeOne(link) {
       var responseValue = responsePartial.substr(
         responsePartialKeyEndIndex,
         responsePartialValueEndIndex - responsePartialKeyEndIndex);
-      if (link.element.getText().slice(link.startOffset, link.endOffsetInclusive + 1) !== responseValue) {
-        link.element.deleteText(link.startOffset, link.endOffsetInclusive);
-        link.element.insertText(link.startOffset, responseValue);
-        var newEndOffsetInclusive = link.startOffset + responseValue.length - 1;
-        link.endOffsetInclusive = newEndOffsetInclusive;
-        link.element.setLinkUrl(link.startOffset, link.endOffsetInclusive, link.url);
-        link.element.setUnderline(link.startOffset, link.endOffsetInclusive, false);
-        link.element.setForegroundColor(link.startOffset, link.endOffsetInclusive,
-                                        HYPERIZED_COLOR);
-        return true;
+      if (link.isText) {
+        if (link.element.getText().slice(link.startOffset, link.endOffsetInclusive + 1) !== responseValue) {
+          link.element.deleteText(link.startOffset, link.endOffsetInclusive);
+          link.element.insertText(link.startOffset, responseValue);
+          var newEndOffsetInclusive = link.startOffset + responseValue.length - 1;
+          link.endOffsetInclusive = newEndOffsetInclusive;
+          link.element.setLinkUrl(link.startOffset, link.endOffsetInclusive, link.url);
+          link.element.setUnderline(link.startOffset, link.endOffsetInclusive, false);
+          link.element.setForegroundColor(link.startOffset, link.endOffsetInclusive,
+                                          HYPERIZED_COLOR);
+          return true;
+        }
       }
     }
   }
@@ -114,9 +116,33 @@ function hyperizeOne(link) {
 
     var responseJSON = JSON.parse(response);
     var labelToImage = getAllResponseImages(response);
+    var image = labelToImage[label];
 
-    var body = DocumentApp.getActiveDocument().getBody();
-    body.getChild(0).asParagraph().appendInlineImage(labelToImage[label]);
+    // We can't insert an image into a Text element, so split the Text element into
+    // multiple elements and insert the image into the parent Paragraph element.
+    if (link.isText) {
+      var beforeImageText = link.element.getText().slice(0, link.startOffset);
+      var afterImageText = link.element.getText().slice(link.endOffsetInclusive + 1, link.element.getText().length);
+    }
+    var parentElement = link.element.getParent();
+    var childIndex = parentElement.getChildIndex(link.element);
+    parentElement.removeChild(link.element);
+    var indexIncrement = 0;
+    if (link.isText) {
+      parentElement.insertText(childIndex + indexIncrement, beforeImageText);
+      indexIncrement += 1;
+    }
+    var imageIndex = childIndex + indexIncrement;
+    parentElement.insertInlineImage(imageIndex, image);
+    indexIncrement += 1;
+    if (link.isText) {
+      parentElement.insertText(childIndex + indexIncrement, afterImageText);
+      indexIncrement += 1;
+    }
+
+    // Set the link of the image.
+    var imageElement = parentElement.getChild(imageIndex);
+    imageElement.setLinkUrl(link.url);
 
     return false;
   }
@@ -234,6 +260,7 @@ function getAllLinks(element) {
         if (!inUrl) {
           inUrl = true;
           curUrl = {};
+          curUrl.isText = true;
           curUrl.element = element;
           curUrl.url = String(url);
           curUrl.startOffset = ch;
@@ -261,6 +288,16 @@ function getAllLinks(element) {
       }
       links.push(curUrl);
       curUrl = {};
+    }
+  }
+  else if (element.getType() === DocumentApp.ElementType.INLINE_IMAGE) {
+    url = element.getLinkUrl();
+    if (url != null) {
+      curUrl = {};
+      curUrl.isText = false;
+      curUrl.element = element;
+      curUrl.url = String(url);
+      links.push(curUrl);
     }
   }
   else {
