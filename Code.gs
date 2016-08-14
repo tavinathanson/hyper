@@ -49,113 +49,106 @@ function colorHyperElements(color) {
 /**
  * Replace hyper link elements with the text that they point to.
  */
-function hyperize(numTimes) {
-  numTimes = numTimes || 0;
-  // TODO: Add error.
-  if (numTimes > 1000) {
-    Logger.log("Too many iterations");
-    return;
-  }
+function hyperize() {
   askForGitHubAccess();
   waitForGitHubAccess();
   var links = getAllHyperLinks();
+  var offsetIncrement = 0;
+  var parentElement = null;
   _.each(links, function(link) {
-    if (hyperizeOne(link)) {
-      hyperize(numTimes + 1);
-      return;
+    // When we see a new parent element, reset the offset increment.
+    if (parentElement === null ||
+        !isSameElement(parentElement, link.element.getParent())) {
+      parentElement = link.element.getParent();
+      offsetIncrement = 0;
+    }
+    var url = link.url;
+    var realUrl = url.split("?hyper")[0]
+    var response = null;
+    if (realUrl.indexOf("https://github.com") === 0) {
+      response = fetchGitHubUrl(realUrl);
+    }
+    else {
+      response = UrlFetchApp.fetch(realUrl).getContentText();
+    }
+
+    if (url.indexOf("?hyper=") !== -1) {
+      var key = url.split("?hyper=")[1]
+      var responseKey = "{{{" + key + ":";
+      var responseKeyIndex = response.indexOf(responseKey);
+      if (responseKeyIndex != -1) {
+        var responsePartial = response.substr(responseKeyIndex);
+        var responsePartialKeyEndIndex = responseKey.length;
+        var responsePartialValueEndIndex = responsePartial.indexOf("}}}");
+        var responseValue = responsePartial.substr(
+          responsePartialKeyEndIndex,
+          responsePartialValueEndIndex - responsePartialKeyEndIndex);
+        if (link.isText) {
+          if (link.element.getText().slice(offsetIncrement + link.startOffset, offsetIncrement + link.endOffsetInclusive + 1) !== responseValue) {
+            link.element.deleteText(offsetIncrement + link.startOffset,
+                                    offsetIncrement + link.endOffsetInclusive);
+            link.element.insertText(offsetIncrement + link.startOffset, responseValue);
+            var newEndOffsetInclusive = offsetIncrement + link.startOffset +
+                responseValue.length - 1;
+            // Set this new offset before we equate the two.
+            // Note that this does not need to be added to the old offset, but is
+            // the entire new offset (since offsetIncrement is already factored in).
+            var newOffsetIncrement = (newEndOffsetInclusive - link.endOffsetInclusive);
+            link.endOffsetInclusive = newEndOffsetInclusive;
+            link.element.setLinkUrl(offsetIncrement + link.startOffset, link.endOffsetInclusive, link.url);
+            link.element.setUnderline(offsetIncrement + link.startOffset, link.endOffsetInclusive, false);
+            link.element.setForegroundColor(offsetIncrement + link.startOffset, link.endOffsetInclusive,
+                                            HYPERIZED_COLOR);
+            // Other links in this element are now at new locations. Use the
+            // increment to adjust for that.
+            offsetIncrement = newOffsetIncrement;
+          }
+          else {
+            // Weird case: image turns into text?
+          }
+        }
+        // No hyper text label found? Look for images!
+        else {
+          var key = url.split("?hyper=")[1]
+          var label = "{{{" + key + "}}}";
+
+          var responseKeyIndex = response.indexOf(label);
+          if (responseKeyIndex != -1) {
+            var responseJSON = JSON.parse(response);
+            var labelToImage = getAllResponseImages(response);
+            var image = labelToImage[label];
+
+            // We can't insert an image into a Text element, so split the Text element into
+            // multiple elements and insert the image into the parent Paragraph element.
+            if (link.isText) {
+              var beforeImageText = link.element.getText().slice(0, link.startOffset);
+              var afterImageText = link.element.getText().slice(link.endOffsetInclusive + 1, link.element.getText().length);
+            }
+            var childIndex = parentElement.getChildIndex(link.element);
+            // TODO: Something like...
+            // if (link.element.getText().slice(link.startOffset, link.endOffsetInclusive + 1) !== responseValue) {
+            parentElement.removeChild(link.element);
+            var indexIncrement = 0;
+            if (link.isText) {
+              parentElement.insertText(childIndex + indexIncrement, beforeImageText);
+              indexIncrement += 1;
+            }
+            var imageIndex = childIndex + indexIncrement;
+            parentElement.insertInlineImage(imageIndex, image);
+            indexIncrement += 1;
+            if (link.isText) {
+              parentElement.insertText(childIndex + indexIncrement, afterImageText);
+              indexIncrement += 1;
+            }
+
+            // Set the link of the image.
+            var imageElement = parentElement.getChild(imageIndex);
+            imageElement.setLinkUrl(link.url);
+          }
+        }
+      }
     }
   });
-}
-
-/**
- * Replace a single hyper link element with the text that it points to.
- *
- * Return true if text indeed changed.
- */
-function hyperizeOne(link) {
-  var url = link.url;
-  var realUrl = url.split("?hyper")[0]
-  var response = null;
-  if (realUrl.indexOf("https://github.com") === 0) {
-    response = fetchGitHubUrl(realUrl);
-  }
-  else {
-    response = UrlFetchApp.fetch(realUrl).getContentText();
-  }
-
-  if (url.indexOf("?hyper=") !== -1) {
-    var key = url.split("?hyper=")[1]
-    var responseKey = "{{{" + key + ":";
-    var responseKeyIndex = response.indexOf(responseKey);
-    if (responseKeyIndex != -1) {
-      var responsePartial = response.substr(responseKeyIndex);
-      var responsePartialKeyEndIndex = responseKey.length;
-      var responsePartialValueEndIndex = responsePartial.indexOf("}}}");
-      var responseValue = responsePartial.substr(
-        responsePartialKeyEndIndex,
-        responsePartialValueEndIndex - responsePartialKeyEndIndex);
-      if (link.isText) {
-        if (link.element.getText().slice(link.startOffset, link.endOffsetInclusive + 1) !== responseValue) {
-          link.element.deleteText(link.startOffset, link.endOffsetInclusive);
-          link.element.insertText(link.startOffset, responseValue);
-          var newEndOffsetInclusive = link.startOffset + responseValue.length - 1;
-          link.endOffsetInclusive = newEndOffsetInclusive;
-          link.element.setLinkUrl(link.startOffset, link.endOffsetInclusive, link.url);
-          link.element.setUnderline(link.startOffset, link.endOffsetInclusive, false);
-          link.element.setForegroundColor(link.startOffset, link.endOffsetInclusive,
-                                          HYPERIZED_COLOR);
-          return true;
-        }
-      }
-      else {
-        // Weird case: image turns into text?
-      }
-    }
-    // No hyper text label found? Look for images!
-    else {
-      var key = url.split("?hyper=")[1]
-      var label = "{{{" + key + "}}}";
-
-      var responseKeyIndex = response.indexOf(label);
-      if (responseKeyIndex != -1) {
-        var responseJSON = JSON.parse(response);
-        var labelToImage = getAllResponseImages(response);
-        var image = labelToImage[label];
-
-        // We can't insert an image into a Text element, so split the Text element into
-        // multiple elements and insert the image into the parent Paragraph element.
-        if (link.isText) {
-          var beforeImageText = link.element.getText().slice(0, link.startOffset);
-          var afterImageText = link.element.getText().slice(link.endOffsetInclusive + 1, link.element.getText().length);
-        }
-        var parentElement = link.element.getParent();
-        var childIndex = parentElement.getChildIndex(link.element);
-        // TODO: Something like...
-        // if (link.element.getText().slice(link.startOffset, link.endOffsetInclusive + 1) !== responseValue) {
-        parentElement.removeChild(link.element);
-        var indexIncrement = 0;
-        if (link.isText) {
-          parentElement.insertText(childIndex + indexIncrement, beforeImageText);
-          indexIncrement += 1;
-        }
-        var imageIndex = childIndex + indexIncrement;
-        parentElement.insertInlineImage(imageIndex, image);
-        indexIncrement += 1;
-        if (link.isText) {
-          parentElement.insertText(childIndex + indexIncrement, afterImageText);
-          indexIncrement += 1;
-        }
-
-        // Set the link of the image.
-        var imageElement = parentElement.getChild(imageIndex);
-        imageElement.setLinkUrl(link.url);
-
-        return false;
-      }
-    }
-  }
-
-  return false;
 }
 
 function getAllResponseImages(response) {
@@ -387,3 +380,42 @@ function authCallback(request) {
   var page = template.evaluate();
   return page;
 }
+
+/**
+ * From http://stackoverflow.com/a/28821735
+ */
+function bodyPath(el, path) {
+  path = path? path: [];
+  var parent = el.getParent();
+  var index = parent.getChildIndex(el);
+  path.push(index);
+  var parentType = parent.getType();
+  if (parentType !== DocumentApp.ElementType.BODY_SECTION) {
+    path = bodyPath(parent, path);
+  }
+  else {
+    return path;
+  };
+  return path;
+};
+
+/**
+ * Check element equality based on path to body rather than contents.
+ *
+ * From http://stackoverflow.com/a/28821735
+ */
+function isSameElement(element1, element2) {
+  var path1 = bodyPath(element1);
+  var path2 = bodyPath(element2);
+  if (path1.length == path2.length) {
+    for (var i = 0 ; i < path1.length; i++) {
+      if (path1[i] !== path2[i]) {
+        return false;
+      };
+    };
+  }
+  else {
+    return false;
+  };
+  return true;
+};
