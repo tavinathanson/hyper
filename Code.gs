@@ -52,16 +52,26 @@ function colorHyperElements(color) {
 function hyperize() {
   askForGitHubAccess();
   waitForGitHubAccess();
+
+  // Split all links into their own text elements
+  var textElements = getAllTextElements();
+  _.each(textElements, function(textElement) {
+    var links = getLinksFromText(textElement);
+    var newTextElements = splitTextByLinks(textElement, links);
+    var parentElement = textElement.getParent();
+    var textElementIndex = parentElement.getChildIndex(textElement);
+    parentElement.removeChild(textElement);
+    var i = 0;
+    _.each(newTextElements, function(newTextElement) {
+      if (newTextElement.getText().length > 0) {
+        parentElement.insertText(textElementIndex + i, newTextElement);
+        i += 1;
+      }
+    });
+  });
+
   var links = getAllHyperLinks();
-  var offsetIncrement = 0;
-  var parentElement = null;
   _.each(links, function(link) {
-    // When we see a new parent element, reset the offset increment.
-    if (parentElement === null ||
-        !isSameElement(parentElement, link.element.getParent())) {
-      parentElement = link.element.getParent();
-      offsetIncrement = 0;
-    }
     var url = link.url;
     var realUrl = url.split("?hyper")[0]
     var response = null;
@@ -71,6 +81,8 @@ function hyperize() {
     else {
       response = UrlFetchApp.fetch(realUrl).getContentText();
     }
+
+    var parentElement = link.element.getParent();
 
     if (url.indexOf("?hyper=") !== -1) {
       var key = url.split("?hyper=")[1]
@@ -84,71 +96,79 @@ function hyperize() {
           responsePartialKeyEndIndex,
           responsePartialValueEndIndex - responsePartialKeyEndIndex);
         if (link.isText) {
-          if (link.element.getText().slice(offsetIncrement + link.startOffset, offsetIncrement + link.endOffsetInclusive + 1) !== responseValue) {
-            link.element.deleteText(offsetIncrement + link.startOffset,
-                                    offsetIncrement + link.endOffsetInclusive);
-            link.element.insertText(offsetIncrement + link.startOffset, responseValue);
-            var newEndOffsetInclusive = offsetIncrement + link.startOffset +
-                responseValue.length - 1;
-            // Set this new offset before we equate the two.
-            // Note that this does not need to be added to the old offset, but is
-            // the entire new offset (since offsetIncrement is already factored in).
-            var newOffsetIncrement = (newEndOffsetInclusive - link.endOffsetInclusive);
-            link.endOffsetInclusive = newEndOffsetInclusive;
-            link.element.setLinkUrl(offsetIncrement + link.startOffset, link.endOffsetInclusive, link.url);
-            link.element.setUnderline(offsetIncrement + link.startOffset, link.endOffsetInclusive, false);
-            link.element.setForegroundColor(offsetIncrement + link.startOffset, link.endOffsetInclusive,
-                                            HYPERIZED_COLOR);
-            // Other links in this element are now at new locations. Use the
-            // increment to adjust for that.
-            offsetIncrement = newOffsetIncrement;
-          }
-          else {
-            // Weird case: image turns into text?
+          if (link.element.getText() !== responseValue) {
+            var elementIndex = parentElement.getChildIndex(link.element);
+            parentElement.removeChild(link.element);
+            parentElement.insertText(elementIndex, responseValue);
+            var newElement = parentElement.getChild(elementIndex);
+
+            newElement.setLinkUrl(link.url);
+            newElement.setUnderline(false);
+            newElement.setForegroundColor(HYPERIZED_COLOR);
           }
         }
-        // No hyper text label found? Look for images!
         else {
-          var key = url.split("?hyper=")[1]
-          var label = "{{{" + key + "}}}";
+          // Weird case: image turns into text?
+        }
+      }
+      // No hyper text label found? Look for images!
+      else {
+        var key = url.split("?hyper=")[1]
+        var label = "{{{" + key + "}}}";
+        var responseKeyIndex = response.indexOf(label);
+        if (responseKeyIndex != -1) {
+          var responseJSON = JSON.parse(response);
+          var labelToImage = getAllResponseImages(response);
+          var image = labelToImage[label];
+          var elementIndex = parentElement.getChildIndex(link.element);
+          parentElement.removeChild(link.element);
+          parentElement.insertInlineImage(elementIndex, image);
+          var newElement = parentElement.getChild(elementIndex);
 
-          var responseKeyIndex = response.indexOf(label);
-          if (responseKeyIndex != -1) {
-            var responseJSON = JSON.parse(response);
-            var labelToImage = getAllResponseImages(response);
-            var image = labelToImage[label];
-
-            // We can't insert an image into a Text element, so split the Text element into
-            // multiple elements and insert the image into the parent Paragraph element.
-            if (link.isText) {
-              var beforeImageText = link.element.getText().slice(0, link.startOffset);
-              var afterImageText = link.element.getText().slice(link.endOffsetInclusive + 1, link.element.getText().length);
-            }
-            var childIndex = parentElement.getChildIndex(link.element);
-            // TODO: Something like...
-            // if (link.element.getText().slice(link.startOffset, link.endOffsetInclusive + 1) !== responseValue) {
-            parentElement.removeChild(link.element);
-            var indexIncrement = 0;
-            if (link.isText) {
-              parentElement.insertText(childIndex + indexIncrement, beforeImageText);
-              indexIncrement += 1;
-            }
-            var imageIndex = childIndex + indexIncrement;
-            parentElement.insertInlineImage(imageIndex, image);
-            indexIncrement += 1;
-            if (link.isText) {
-              parentElement.insertText(childIndex + indexIncrement, afterImageText);
-              indexIncrement += 1;
-            }
-
-            // Set the link of the image.
-            var imageElement = parentElement.getChild(imageIndex);
-            imageElement.setLinkUrl(link.url);
-          }
+          newElement.setLinkUrl(link.url);
         }
       }
     }
+});
+}
+
+function splitTextByLinks(textElement, links) {
+  var newTextElements = [];
+  // Example starting points
+  // |         |         |
+  // abc[link1]cde[link2]hij
+  var startingPoint = 0;
+  var textLength = textElement.getText().length;
+  _.each(links, function(link) {
+    // abc, cde
+    var newTextElement = textElement.copy();
+    if (startingPoint > 0) {
+      newTextElement.deleteText(0, startingPoint - 1);
+    }
+    newTextElement.deleteText(link.startOffset - startingPoint, textLength - 1 - startingPoint);
+    newTextElements.push(newTextElement);
+    startingPoint += newTextElement.getText().length;
+
+    // link1, link2
+    newTextElement = textElement.copy();
+    if (link.endOffsetInclusive + 1 - link.startOffset <= textLength - 1 - link.startOffset) {
+      if (link.startOffset > 0) {
+        newTextElement.deleteText(0, link.startOffset - 1);
+      }
+      newTextElement.deleteText(link.endOffsetInclusive + 1 - link.startOffset, textLength - 1 - link.startOffset);
+      newTextElements.push(newTextElement);
+      startingPoint += newTextElement.getText().length;
+    }
   });
+
+  // hij
+  newTextElement = textElement.copy();
+  if (startingPoint > 0 && startingPoint < textLength) {
+    newTextElement.deleteText(0, startingPoint - 1);
+  }
+  newTextElements.push(newTextElement);
+
+  return newTextElements;
 }
 
 function getAllResponseImages(response) {
@@ -239,6 +259,72 @@ function fetchGitHubUrl(gitHubUrl) {
   }
 }
 
+function getAllTextElements(element) {
+  var textElements = [];
+  var element = element || DocumentApp.getActiveDocument().getBody();
+  if (element.getType() === DocumentApp.ElementType.TEXT) {
+    textElements.push(element);
+  }
+  else {
+    var numChildren = 0;
+    try {
+      numChildren = element.getNumChildren();
+    }
+    catch (e) {}
+    for (var i = 0; i < numChildren; i++) {
+      textElements = textElements.concat(getAllTextElements(element.getChild(i)));
+    }
+  }
+
+  return textElements;
+}
+
+function getLinksFromText(element) {
+  var links = [];
+  var textObj = element.editAsText();
+  var text = element.getText();
+  var inUrl = false;
+  var url = null;
+  var curUrl = null;
+  for (var ch = 0; ch < text.length; ch++) {
+    url = textObj.getLinkUrl(ch);
+    if (url != null) {
+      if (!inUrl) {
+        inUrl = true;
+        curUrl = {};
+        curUrl.isText = true;
+        curUrl.element = element;
+        curUrl.url = String(url);
+        curUrl.startOffset = ch;
+      }
+      else {
+        curUrl.endOffsetInclusive = ch;
+      }
+    }
+    else {
+      if (inUrl) {
+        inUrl = false;
+        if (curUrl.endOffsetInclusive === undefined) {
+          curUrl.endOffsetInclusive = curUrl.startOffset;
+        }
+        links.push(curUrl);
+        curUrl = {};
+      }
+    }
+  }
+  // Needed for the case when no non-link character comes after a link.
+  if (url != null && curUrl != null) {
+    inUrl = false;
+    if (curUrl.endOffsetInclusive === undefined) {
+      curUrl.endOffsetInclusive = curUrl.startOffset;
+    }
+    links.push(curUrl);
+    curUrl = {};
+  }
+
+  return links;
+}
+
 /**
  * Get all links from the document, which is tricky because links might be only
  * a portion of an element.
@@ -250,46 +336,7 @@ function getAllLinks(element) {
   var links = [];
   element = element || DocumentApp.getActiveDocument().getBody();
   if (element.getType() === DocumentApp.ElementType.TEXT) {
-    var textObj = element.editAsText();
-    var text = element.getText();
-    var inUrl = false;
-    var url = null;
-    var curUrl = null;
-    for (var ch = 0; ch < text.length; ch++) {
-      url = textObj.getLinkUrl(ch);
-      if (url != null) {
-        if (!inUrl) {
-          inUrl = true;
-          curUrl = {};
-          curUrl.isText = true;
-          curUrl.element = element;
-          curUrl.url = String(url);
-          curUrl.startOffset = ch;
-        }
-        else {
-          curUrl.endOffsetInclusive = ch;
-        }
-      }
-      else {
-        if (inUrl) {
-          inUrl = false;
-          if (curUrl.endOffsetInclusive === undefined) {
-            curUrl.endOffsetInclusive = curUrl.startOffset;
-          }
-          links.push(curUrl);
-          curUrl = {};
-        }
-      }
-    }
-    // Needed for the case when no non-link character comes after a link.
-    if (url != null && curUrl != null) {
-      inUrl = false;
-      if (curUrl.endOffsetInclusive === undefined) {
-        curUrl.endOffsetInclusive = curUrl.startOffset;
-      }
-      links.push(curUrl);
-      curUrl = {};
-    }
+    links = links.concat(getLinksFromText(element));
   }
   else if (element.getType() === DocumentApp.ElementType.INLINE_IMAGE) {
     url = element.getLinkUrl();
@@ -380,42 +427,3 @@ function authCallback(request) {
   var page = template.evaluate();
   return page;
 }
-
-/**
- * From http://stackoverflow.com/a/28821735
- */
-function bodyPath(el, path) {
-  path = path? path: [];
-  var parent = el.getParent();
-  var index = parent.getChildIndex(el);
-  path.push(index);
-  var parentType = parent.getType();
-  if (parentType !== DocumentApp.ElementType.BODY_SECTION) {
-    path = bodyPath(parent, path);
-  }
-  else {
-    return path;
-  };
-  return path;
-};
-
-/**
- * Check element equality based on path to body rather than contents.
- *
- * From http://stackoverflow.com/a/28821735
- */
-function isSameElement(element1, element2) {
-  var path1 = bodyPath(element1);
-  var path2 = bodyPath(element2);
-  if (path1.length == path2.length) {
-    for (var i = 0 ; i < path1.length; i++) {
-      if (path1[i] !== path2[i]) {
-        return false;
-      };
-    };
-  }
-  else {
-    return false;
-  };
-  return true;
-};
