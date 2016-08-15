@@ -47,6 +47,24 @@ function colorHyperElements(color) {
 }
 
 /**
+ * From http://stackoverflow.com/a/28821735
+ */
+function bodyPath(el, path) {
+  path = path? path: [];
+  var parent = el.getParent();
+  var index = parent.getChildIndex(el);
+  path.push(index);
+  var parentType = parent.getType();
+  if (parentType !== DocumentApp.ElementType.BODY_SECTION) {
+    path = bodyPath(parent, path);
+  }
+  else {
+    return path;
+  };
+  return path;
+};
+
+/**
  * Replace hyper link elements with the text that they point to.
  */
 function hyperize() {
@@ -54,82 +72,59 @@ function hyperize() {
   waitForGitHubAccess();
 
   // Split all links into their own text elements
+  var changingHyperObjects = getAllChangingHyperObjects();
   var textElements = getAllTextElements();
   _.each(textElements, function(textElement) {
     var links = getLinksFromText(textElement);
-    var newTextElements = splitTextByLinks(textElement, links);
-    var parentElement = textElement.getParent();
-    var textElementIndex = parentElement.getChildIndex(textElement);
-    parentElement.removeChild(textElement);
-    var i = 0;
-    _.each(newTextElements, function(newTextElement) {
-      if (newTextElement.getText().length > 0) {
-        parentElement.insertText(textElementIndex + i, newTextElement);
-        i += 1;
+    var changingLinksFromText = [];
+    _.each(links, function(link) {
+      if (changingHyperObjects.hasOwnProperty(link.url)) {
+        changingLinksFromText.push(link);
       }
     });
+    if (changingLinksFromText.length > 0) {
+      var newTextElements = splitTextByLinks(textElement, changingLinksFromText);
+      var parentElement = textElement.getParent();
+      var textElementIndex = parentElement.getChildIndex(textElement);
+      parentElement.removeChild(textElement);
+
+      var i = 0;
+      _.each(newTextElements, function(newTextElement) {
+        if (newTextElement.getText().length > 0) {
+          parentElement.insertText(textElementIndex + i, newTextElement);
+          i += 1;
+        }
+      });
+    }
   });
 
-  var links = getAllHyperLinks();
-  _.each(links, function(link) {
-    var url = link.url;
-    var realUrl = url.split("?hyper")[0]
-    var response = null;
-    if (realUrl.indexOf("https://github.com") === 0) {
-      response = fetchGitHubUrl(realUrl);
+  // We must re-run to get the split elements.
+  changingHyperObjects = getAllChangingHyperObjects();
+  _.each(_.allKeys(changingHyperObjects), function(url) {
+    var responseValue = changingHyperObjects[url].value;
+    var toText = changingHyperObjects[url].to_text;
+    var link = changingHyperObjects[url].link;
+    var linkElement = link.element;
+    var parentElement = linkElement.getParent();
+    var elementIndex = parentElement.getChildIndex(linkElement);
+    if (toText === true) {
+      parentElement.removeChild(linkElement);
+      parentElement.insertText(elementIndex, responseValue);
+      var newElement = parentElement.getChild(elementIndex);
+
+      newElement.setLinkUrl(link.url);
+      newElement.setUnderline(false);
+      newElement.setForegroundColor(HYPERIZED_COLOR);
     }
+    // No hyper text label found? Look for images!
     else {
-      response = UrlFetchApp.fetch(realUrl).getContentText();
+      parentElement.removeChild(linkElement);
+      parentElement.insertInlineImage(elementIndex, responseValue);
+      var newElement = parentElement.getChild(elementIndex);
+
+      newElement.setLinkUrl(link.url);
     }
-
-    var parentElement = link.element.getParent();
-
-    if (url.indexOf("?hyper=") !== -1) {
-      var key = url.split("?hyper=")[1]
-      var responseKey = "{{{" + key + ":";
-      var responseKeyIndex = response.indexOf(responseKey);
-      if (responseKeyIndex != -1) {
-        var responsePartial = response.substr(responseKeyIndex);
-        var responsePartialKeyEndIndex = responseKey.length;
-        var responsePartialValueEndIndex = responsePartial.indexOf("}}}");
-        var responseValue = responsePartial.substr(
-          responsePartialKeyEndIndex,
-          responsePartialValueEndIndex - responsePartialKeyEndIndex);
-        if (link.isText) {
-          if (link.element.getText() !== responseValue) {
-            var elementIndex = parentElement.getChildIndex(link.element);
-            parentElement.removeChild(link.element);
-            parentElement.insertText(elementIndex, responseValue);
-            var newElement = parentElement.getChild(elementIndex);
-
-            newElement.setLinkUrl(link.url);
-            newElement.setUnderline(false);
-            newElement.setForegroundColor(HYPERIZED_COLOR);
-          }
-        }
-        else {
-          // Weird case: image turns into text?
-        }
-      }
-      // No hyper text label found? Look for images!
-      else {
-        var key = url.split("?hyper=")[1]
-        var label = "{{{" + key + "}}}";
-        var responseKeyIndex = response.indexOf(label);
-        if (responseKeyIndex != -1) {
-          var responseJSON = JSON.parse(response);
-          var labelToImage = getAllResponseImages(response);
-          var image = labelToImage[label];
-          var elementIndex = parentElement.getChildIndex(link.element);
-          parentElement.removeChild(link.element);
-          parentElement.insertInlineImage(elementIndex, image);
-          var newElement = parentElement.getChild(elementIndex);
-
-          newElement.setLinkUrl(link.url);
-        }
-      }
-    }
-});
+  });
 }
 
 function splitTextByLinks(textElement, links) {
@@ -216,6 +211,54 @@ function getAllResponseImages(response) {
   }
 
   return labelsToImages;
+}
+
+function getAllChangingHyperObjects() {
+  var links = getAllHyperLinks();
+  var changingHyperObjects = {};
+  _.each(links, function(link) {
+    var url = link.url;
+    var realUrl = url.split("?hyper")[0]
+    var response = null;
+    if (realUrl.indexOf("https://github.com") === 0) {
+      response = fetchGitHubUrl(realUrl);
+    }
+    else {
+      response = UrlFetchApp.fetch(realUrl).getContentText();
+    }
+
+    if (url.indexOf("?hyper=") !== -1) {
+      var key = url.split("?hyper=")[1]
+      var responseKey = "{{{" + key + ":";
+      var responseKeyIndex = response.indexOf(responseKey);
+      if (responseKeyIndex != -1) {
+        var responsePartial = response.substr(responseKeyIndex);
+        var responsePartialKeyEndIndex = responseKey.length;
+        var responsePartialValueEndIndex = responsePartial.indexOf("}}}");
+        var responseValue = responsePartial.substr(
+          responsePartialKeyEndIndex,
+          responsePartialValueEndIndex - responsePartialKeyEndIndex);
+        if (link.isText) {
+          // This is called before the links are chopped up. (And after, though the links will have different start/end offsets then.)
+          if (link.element.getText().slice(link.startOffset, link.endOffsetInclusive + 1) !== responseValue) {
+            changingHyperObjects[link.url] = {"value": responseValue, "to_text": true, "link": link};
+          }
+        }
+      }
+      else {
+        var key = url.split("?hyper=")[1]
+        var label = "{{{" + key + "}}}";
+        var responseKeyIndex = response.indexOf(label);
+        if (responseKeyIndex != -1) {
+          var responseJSON = JSON.parse(response);
+          var labelToImage = getAllResponseImages(response);
+          var responseValue = labelToImage[label];
+          changingHyperObjects[link.url] = {"value": responseValue, "to_text": false, "link": link};
+        }
+      }
+    }
+  });
+  return changingHyperObjects;
 }
 
 /**
