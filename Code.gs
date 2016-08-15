@@ -1,5 +1,8 @@
 var HYPERIZED_COLOR = "#cc0099";
 
+// Added using the project key in https://github.com/simula-innovation/gas-underscore
+var _ = Underscore.load();
+
 /**
  * Creates a menu entry in the Google Docs UI when the document is opened.
  */
@@ -38,73 +41,181 @@ function hideHyperElements() {
  */
 function colorHyperElements(color) {
   var links = getAllHyperLinks();
-  for (var i = 0; i < links.length; i++) {
-    var link = links[i];
+  _.each(links, function(link) {
     link.element.setForegroundColor(link.startOffset, link.endOffsetInclusive, color);
-  }
+  });
 }
 
 /**
  * Replace hyper link elements with the text that they point to.
  */
-function hyperize(numTimes) {
-  numTimes = numTimes || 0;
-  // TODO: Add error.
-  if (numTimes > 1000) {
-    Logger.log("Too many iterations");
-    return;
-  }
+function hyperize() {
   askForGitHubAccess();
   waitForGitHubAccess();
+
+  // Split all links into their own text elements
+  var textElements = getAllTextElements();
+  _.each(textElements, function(textElement) {
+    var links = getLinksFromText(textElement);
+    var newTextElements = splitTextByLinks(textElement, links);
+    var parentElement = textElement.getParent();
+    var textElementIndex = parentElement.getChildIndex(textElement);
+    parentElement.removeChild(textElement);
+    var i = 0;
+    _.each(newTextElements, function(newTextElement) {
+      if (newTextElement.getText().length > 0) {
+        parentElement.insertText(textElementIndex + i, newTextElement);
+        i += 1;
+      }
+    });
+  });
+
   var links = getAllHyperLinks();
-  for (var i = 0; i < links.length; i++) {
-    var link = links[i];
-    if (hyperizeOne(link)) {
-      hyperize(numTimes + 1);
-      break;
+  _.each(links, function(link) {
+    var url = link.url;
+    var realUrl = url.split("?hyper")[0]
+    var response = null;
+    if (realUrl.indexOf("https://github.com") === 0) {
+      response = fetchGitHubUrl(realUrl);
     }
-  }
+    else {
+      response = UrlFetchApp.fetch(realUrl).getContentText();
+    }
+
+    var parentElement = link.element.getParent();
+
+    if (url.indexOf("?hyper=") !== -1) {
+      var key = url.split("?hyper=")[1]
+      var responseKey = "{{{" + key + ":";
+      var responseKeyIndex = response.indexOf(responseKey);
+      if (responseKeyIndex != -1) {
+        var responsePartial = response.substr(responseKeyIndex);
+        var responsePartialKeyEndIndex = responseKey.length;
+        var responsePartialValueEndIndex = responsePartial.indexOf("}}}");
+        var responseValue = responsePartial.substr(
+          responsePartialKeyEndIndex,
+          responsePartialValueEndIndex - responsePartialKeyEndIndex);
+        if (link.isText) {
+          if (link.element.getText() !== responseValue) {
+            var elementIndex = parentElement.getChildIndex(link.element);
+            parentElement.removeChild(link.element);
+            parentElement.insertText(elementIndex, responseValue);
+            var newElement = parentElement.getChild(elementIndex);
+
+            newElement.setLinkUrl(link.url);
+            newElement.setUnderline(false);
+            newElement.setForegroundColor(HYPERIZED_COLOR);
+          }
+        }
+        else {
+          // Weird case: image turns into text?
+        }
+      }
+      // No hyper text label found? Look for images!
+      else {
+        var key = url.split("?hyper=")[1]
+        var label = "{{{" + key + "}}}";
+        var responseKeyIndex = response.indexOf(label);
+        if (responseKeyIndex != -1) {
+          var responseJSON = JSON.parse(response);
+          var labelToImage = getAllResponseImages(response);
+          var image = labelToImage[label];
+          var elementIndex = parentElement.getChildIndex(link.element);
+          parentElement.removeChild(link.element);
+          parentElement.insertInlineImage(elementIndex, image);
+          var newElement = parentElement.getChild(elementIndex);
+
+          newElement.setLinkUrl(link.url);
+        }
+      }
+    }
+});
 }
 
-/**
- * Replace a single hyper link element with the text that it points to.
- *
- * Return true if text indeed changed.
- */
-function hyperizeOne(link) {
-  var url = link.url;
-  var key = url.split("?hyper=")[1]
-  var realUrl = url.split("?hyper=")[0]
-  var response = null;
-  if (realUrl.indexOf("https://github.com") === 0) {
-    response = fetchGitHubUrl(realUrl);
-  }
-  else {
-    response = UrlFetchApp.fetch(realUrl).getContentText();
-  }
-  var responseKey = "{{{" + key + ":";
-  var responseKeyIndex = response.indexOf(responseKey);
-  if (responseKeyIndex != -1) {
-    responsePartial = response.substr(responseKeyIndex);
-    responsePartialKeyEndIndex = responseKey.length;
-    responsePartialValueEndIndex = responsePartial.indexOf("}}}");
-    responseValue = responsePartial.substr(
-      responsePartialKeyEndIndex,
-      responsePartialValueEndIndex - responsePartialKeyEndIndex);
-    if (link.element.getText().slice(link.startOffset, link.endOffsetInclusive + 1) !== responseValue) {
-      link.element.deleteText(link.startOffset, link.endOffsetInclusive);
-      link.element.insertText(link.startOffset, responseValue);
-      var newEndOffsetInclusive = link.startOffset + responseValue.length - 1;
-      link.endOffsetInclusive = newEndOffsetInclusive;
-      link.element.setLinkUrl(link.startOffset, link.endOffsetInclusive, link.url);
-      link.element.setUnderline(link.startOffset, link.endOffsetInclusive, false);
-      link.element.setForegroundColor(link.startOffset, link.endOffsetInclusive,
-                                      HYPERIZED_COLOR);
-      return true;
+function splitTextByLinks(textElement, links) {
+  var newTextElements = [];
+  // Example starting points
+  // |         |         |
+  // abc[link1]cde[link2]hij
+  var startingPoint = 0;
+  var textLength = textElement.getText().length;
+  _.each(links, function(link) {
+    // abc, cde
+    var newTextElement = textElement.copy();
+    if (startingPoint > 0) {
+      newTextElement.deleteText(0, startingPoint - 1);
     }
+    newTextElement.deleteText(link.startOffset - startingPoint, textLength - 1 - startingPoint);
+    newTextElements.push(newTextElement);
+    startingPoint += newTextElement.getText().length;
+
+    // link1, link2
+    newTextElement = textElement.copy();
+    if (link.endOffsetInclusive + 1 - link.startOffset <= textLength - 1 - link.startOffset) {
+      if (link.startOffset > 0) {
+        newTextElement.deleteText(0, link.startOffset - 1);
+      }
+      newTextElement.deleteText(link.endOffsetInclusive + 1 - link.startOffset, textLength - 1 - link.startOffset);
+      newTextElements.push(newTextElement);
+      startingPoint += newTextElement.getText().length;
+    }
+  });
+
+  // hij
+  newTextElement = textElement.copy();
+  if (startingPoint > 0 && startingPoint < textLength) {
+    newTextElement.deleteText(0, startingPoint - 1);
+  }
+  newTextElements.push(newTextElement);
+
+  return newTextElements;
+}
+
+function getAllResponseImages(response) {
+  var responseJSON = JSON.parse(response);
+  var cells = responseJSON.cells;
+  var labelsToImages = {};
+  var labels = [];
+  var lastLabel = null;
+  var lastImage = null;
+  _.each(cells, function(cell) {
+    var outputs = cell.outputs;
+    _.each(outputs, function(output) {
+      // TODO: Use better contains.
+      if ("data" in output) {
+        if ("image/png" in output["data"]) {
+          var decoded = Utilities.base64Decode(output["data"]["image/png"]);
+          var blob = Utilities.newBlob(decoded);
+          if (lastLabel !== null) {
+            labelsToImages[lastLabel] = blob;
+            lastLabel = null;
+          }
+        }
+      }
+      if ("text" in output) {
+        var text = output["text"];
+        _.each(text, function(line) {
+          var line = String(line);
+          if (line.indexOf("{{{") !== -1 && line.indexOf("}}}") !== -1) {
+            var startLabelIndex = line.indexOf("{{{");
+            var endLabelIndex = line.indexOf("}}}");
+            var label = line.slice(startLabelIndex, endLabelIndex + "}}}".length);
+            // Don't include non-image hyper labels
+            if (label.indexOf(":") === -1) {
+              labels.push(label);
+              lastLabel = label;
+            }
+          }
+        });
+      }
+    });
+  });
+
+  if (_.size(labels) !== _.size(labelsToImages)) {
+    throw new Error("Not every label corresponds to an image!");
   }
 
-  return false;
+  return labelsToImages;
 }
 
 /**
@@ -116,7 +227,7 @@ function getAllHyperLinks() {
   for (var i = 0; i < links.length; i++) {
     var link = links[i];
     var url = link.url;
-    if (url.indexOf("?hyper=") != -1) {
+    if (url.indexOf("?hyper") != -1) {
       hyperLinks.push(link);
     }
   }
@@ -148,6 +259,72 @@ function fetchGitHubUrl(gitHubUrl) {
   }
 }
 
+function getAllTextElements(element) {
+  var textElements = [];
+  var element = element || DocumentApp.getActiveDocument().getBody();
+  if (element.getType() === DocumentApp.ElementType.TEXT) {
+    textElements.push(element);
+  }
+  else {
+    var numChildren = 0;
+    try {
+      numChildren = element.getNumChildren();
+    }
+    catch (e) {}
+    for (var i = 0; i < numChildren; i++) {
+      textElements = textElements.concat(getAllTextElements(element.getChild(i)));
+    }
+  }
+
+  return textElements;
+}
+
+function getLinksFromText(element) {
+  var links = [];
+  var textObj = element.editAsText();
+  var text = element.getText();
+  var inUrl = false;
+  var url = null;
+  var curUrl = null;
+  for (var ch = 0; ch < text.length; ch++) {
+    url = textObj.getLinkUrl(ch);
+    if (url != null) {
+      if (!inUrl) {
+        inUrl = true;
+        curUrl = {};
+        curUrl.isText = true;
+        curUrl.element = element;
+        curUrl.url = String(url);
+        curUrl.startOffset = ch;
+      }
+      else {
+        curUrl.endOffsetInclusive = ch;
+      }
+    }
+    else {
+      if (inUrl) {
+        inUrl = false;
+        if (curUrl.endOffsetInclusive === undefined) {
+          curUrl.endOffsetInclusive = curUrl.startOffset;
+        }
+        links.push(curUrl);
+        curUrl = {};
+      }
+    }
+  }
+  // Needed for the case when no non-link character comes after a link.
+  if (url != null && curUrl != null) {
+    inUrl = false;
+    if (curUrl.endOffsetInclusive === undefined) {
+      curUrl.endOffsetInclusive = curUrl.startOffset;
+    }
+    links.push(curUrl);
+    curUrl = {};
+  }
+
+  return links;
+}
+
 /**
  * Get all links from the document, which is tricky because links might be only
  * a portion of an element.
@@ -159,44 +336,16 @@ function getAllLinks(element) {
   var links = [];
   element = element || DocumentApp.getActiveDocument().getBody();
   if (element.getType() === DocumentApp.ElementType.TEXT) {
-    var textObj = element.editAsText();
-    var text = element.getText();
-    var inUrl = false;
-    var url = null;
-    var curUrl = null;
-    for (var ch = 0; ch < text.length; ch++) {
-      url = textObj.getLinkUrl(ch);
-      if (url != null) {
-        if (!inUrl) {
-          inUrl = true;
-          curUrl = {};
-          curUrl.element = element;
-          curUrl.url = String(url);
-          curUrl.startOffset = ch;
-        }
-        else {
-          curUrl.endOffsetInclusive = ch;
-        }
-      }
-      else {
-        if (inUrl) {
-          inUrl = false;
-          if (curUrl.endOffsetInclusive === undefined) {
-            curUrl.endOffsetInclusive = curUrl.startOffset;
-          }
-          links.push(curUrl);
-          curUrl = {};
-        }
-      }
-    }
-    // Needed for the case when no non-link character comes after a link.
-    if (url != null && curUrl != null) {
-      inUrl = false;
-      if (curUrl.endOffsetInclusive === undefined) {
-        curUrl.endOffsetInclusive = curUrl.startOffset;
-      }
-      links.push(curUrl);
+    links = links.concat(getLinksFromText(element));
+  }
+  else if (element.getType() === DocumentApp.ElementType.INLINE_IMAGE) {
+    url = element.getLinkUrl();
+    if (url != null) {
       curUrl = {};
+      curUrl.isText = false;
+      curUrl.element = element;
+      curUrl.url = String(url);
+      links.push(curUrl);
     }
   }
   else {
