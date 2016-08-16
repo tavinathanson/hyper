@@ -3,6 +3,9 @@ var HYPERIZED_COLOR = "#cc0099";
 // Added using the project key in https://github.com/simula-innovation/gas-underscore
 var _ = Underscore.load();
 
+var userProperties = null;
+var scriptProperties = null;
+
 /**
  * Creates a menu entry in the Google Docs UI when the document is opened.
  */
@@ -42,7 +45,10 @@ function hideHyperElements() {
 function colorHyperElements(color) {
   var links = getAllHyperLinks();
   _.each(links, function(link) {
-    link.element.setForegroundColor(link.startOffset, link.endOffsetInclusive, color);
+    if (link.element.getType() == DocumentApp.ElementType.TEXT) {
+      link.element.setForegroundColor(link.startOffset,
+                                      link.endOffsetInclusive, color);
+    }
   });
 }
 
@@ -231,7 +237,7 @@ function getAllChangingHyperObjects() {
       var key = url.split("?hyper=")[1]
       var responseKey = "{{{" + key + ":";
       var responseKeyIndex = response.indexOf(responseKey);
-      if (responseKeyIndex != -1) {
+      if (responseKeyIndex !== -1) {
         var responsePartial = response.substr(responseKeyIndex);
         var responsePartialKeyEndIndex = responseKey.length;
         var responsePartialValueEndIndex = responsePartial.indexOf("}}}");
@@ -417,16 +423,15 @@ function reset() {
  * Configures the GitHub authorization service.
  */
 function getGitHubService() {
-  var scriptProperties = PropertiesService.getScriptProperties();
-  var gitHubClientId = scriptProperties.getProperty("GITHUB_CLIENT_ID");
-  var gitHubClientSecret = scriptProperties.getProperty("GITHUB_CLIENT_SECRET");
+  var gitHubClientId = getScriptProperties().getProperty("GITHUB_CLIENT_ID");
+  var gitHubClientSecret = getScriptProperties().getProperty("GITHUB_CLIENT_SECRET");
   return OAuth2.createService("GitHub")
     .setAuthorizationBaseUrl("https://github.com/login/oauth/authorize")
     .setTokenUrl("https://github.com/login/oauth/access_token")
     .setClientId(gitHubClientId)
     .setClientSecret(gitHubClientSecret)
     .setCallbackFunction("authCallback")
-    .setPropertyStore(PropertiesService.getUserProperties())
+    .setPropertyStore(getUserProperties())
     .setScope("repo") // Need access to code
     .setParam("allow_signup", true);
 }
@@ -452,8 +457,22 @@ function askForGitHubAccess() {
 function waitForGitHubAccess() {
   var gitHubService = getGitHubService();
   while (!gitHubService.hasAccess()) {
-    Utilities.sleep(1000);
+    Utilities.sleep(5000);
   }
+}
+
+function getUserProperties() {
+  if (userProperties === null) {
+    userProperties = PropertiesService.getUserProperties();
+  }
+  return userProperties;
+}
+
+function getScriptProperties() {
+  if (scriptProperties === null) {
+    scriptProperties = PropertiesService.getScriptProperties();
+  }
+  return scriptProperties;
 }
 
 /**
