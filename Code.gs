@@ -3,9 +3,6 @@ var HYPERIZED_COLOR = "#cc0099";
 // Added using the project key in https://github.com/simula-innovation/gas-underscore
 var _ = Underscore.load();
 
-var userProperties = null;
-var scriptProperties = null;
-
 /**
  * Creates a menu entry in the Google Docs UI when the document is opened.
  */
@@ -74,6 +71,122 @@ function bodyPath(el, path) {
  * Replace hyper link elements with the text that they point to.
  */
 function hyperize() {
+  var userProperties = PropertiesService.getUserProperties();
+  var scriptProperties = PropertiesService.getScriptProperties();
+  var fetchedUrls = {};
+
+  /**
+   * Configures the GitHub authorization service.
+   */
+  function getGitHubService() {
+    return getGitHubServiceWithProperties(scriptProperties, userProperties);
+  }
+
+  /**
+   * Prompts the user for a modal dialog to gain GitHub access.
+   */
+  function askForGitHubAccess() {
+    var gitHubService = getGitHubService();
+    if (!gitHubService.hasAccess()) {
+      var authorizationUrl = gitHubService.getAuthorizationUrl();
+      // Close the modal after authorization is attempted.
+      var template = HtmlService.createTemplateFromFile("github_auth");
+      template.authorizationUrl = authorizationUrl;
+      var page = template.evaluate().setHeight(50);
+      DocumentApp.getUi().showModalDialog(page, "Hyper: Authorize GitHub");
+    }
+  }
+
+  /**
+   * Blocks until GitHub access is established.
+   */
+  function waitForGitHubAccess() {
+    var gitHubService = getGitHubService();
+    while (!gitHubService.hasAccess()) {
+      Utilities.sleep(5000);
+    }
+  }
+
+  /**
+   * Use GitHub authorization to fetch the contents of a GitHub URL.
+   */
+  function fetchGitHubUrl(gitHubUrl) {
+    var service = getGitHubService();
+    if (service.hasAccess()) {
+      if (fetchedUrls.hasOwnProperty(gitHubUrl)) {
+        return fetchedUrls[gitHubUrl];
+      }
+
+      gitHubUrlParts = gitHubUrl.split("/");
+      gitHubIndex = gitHubUrlParts.indexOf("github.com");
+      orgName = gitHubUrlParts[gitHubIndex + 1];
+      repoName = gitHubUrlParts[gitHubIndex + 2];
+      blobIndex = gitHubUrlParts.indexOf("blob");
+      branch = gitHubUrlParts[blobIndex + 1];
+      path = gitHubUrlParts.slice(blobIndex + 2).join("/");
+      var url = "https://api.github.com/repos/" + orgName + "/" + repoName + "/contents/" +
+          path + "?ref=" + branch;
+      var response = UrlFetchApp.fetch(url, {
+        headers: {
+          Authorization: "Bearer " + service.getAccessToken(),
+          Accept: "application/vnd.github.v3.raw"
+        }
+      });
+
+      Utilities.sleep(1000);
+      fetchedUrls[gitHubUrl] = response.getContentText();
+      return response.getContentText();
+    }
+  }
+
+  function getAllChangingHyperObjects() {
+    var links = getAllHyperLinks();
+    var changingHyperObjects = {};
+    _.each(links, function(link) {
+      var url = link.url;
+      var realUrl = url.split("?hyper")[0]
+      var response = null;
+      if (realUrl.indexOf("https://github.com") === 0) {
+        response = fetchGitHubUrl(realUrl);
+      }
+      else {
+        response = UrlFetchApp.fetch(realUrl).getContentText();
+      }
+
+      if (url.indexOf("?hyper=") !== -1) {
+        var key = url.split("?hyper=")[1]
+        var responseKey = "{{{" + key + ":";
+        var responseKeyIndex = response.indexOf(responseKey);
+        if (responseKeyIndex !== -1) {
+          var responsePartial = response.substr(responseKeyIndex);
+          var responsePartialKeyEndIndex = responseKey.length;
+          var responsePartialValueEndIndex = responsePartial.indexOf("}}}");
+          var responseValue = responsePartial.substr(
+            responsePartialKeyEndIndex,
+            responsePartialValueEndIndex - responsePartialKeyEndIndex);
+          if (link.isText) {
+            // This is called before the links are chopped up. (And after, though the links will have different start/end offsets then.)
+            if (link.element.getText().slice(link.startOffset, link.endOffsetInclusive + 1) !== responseValue) {
+              changingHyperObjects[link.url] = {"value": responseValue, "to_text": true, "link": link};
+            }
+          }
+        }
+        else {
+          var key = url.split("?hyper=")[1]
+          var label = "{{{" + key + "}}}";
+          var responseKeyIndex = response.indexOf(label);
+          if (responseKeyIndex != -1) {
+            var responseJSON = JSON.parse(response);
+            var labelToImage = getAllResponseImages(response);
+            var responseValue = labelToImage[label];
+            changingHyperObjects[link.url] = {"value": responseValue, "to_text": false, "link": link};
+          }
+        }
+      }
+    });
+    return changingHyperObjects;
+  }
+
   askForGitHubAccess();
   waitForGitHubAccess();
 
@@ -219,54 +332,6 @@ function getAllResponseImages(response) {
   return labelsToImages;
 }
 
-function getAllChangingHyperObjects() {
-  var links = getAllHyperLinks();
-  var changingHyperObjects = {};
-  _.each(links, function(link) {
-    var url = link.url;
-    var realUrl = url.split("?hyper")[0]
-    var response = null;
-    if (realUrl.indexOf("https://github.com") === 0) {
-      response = fetchGitHubUrl(realUrl);
-    }
-    else {
-      response = UrlFetchApp.fetch(realUrl).getContentText();
-    }
-
-    if (url.indexOf("?hyper=") !== -1) {
-      var key = url.split("?hyper=")[1]
-      var responseKey = "{{{" + key + ":";
-      var responseKeyIndex = response.indexOf(responseKey);
-      if (responseKeyIndex !== -1) {
-        var responsePartial = response.substr(responseKeyIndex);
-        var responsePartialKeyEndIndex = responseKey.length;
-        var responsePartialValueEndIndex = responsePartial.indexOf("}}}");
-        var responseValue = responsePartial.substr(
-          responsePartialKeyEndIndex,
-          responsePartialValueEndIndex - responsePartialKeyEndIndex);
-        if (link.isText) {
-          // This is called before the links are chopped up. (And after, though the links will have different start/end offsets then.)
-          if (link.element.getText().slice(link.startOffset, link.endOffsetInclusive + 1) !== responseValue) {
-            changingHyperObjects[link.url] = {"value": responseValue, "to_text": true, "link": link};
-          }
-        }
-      }
-      else {
-        var key = url.split("?hyper=")[1]
-        var label = "{{{" + key + "}}}";
-        var responseKeyIndex = response.indexOf(label);
-        if (responseKeyIndex != -1) {
-          var responseJSON = JSON.parse(response);
-          var labelToImage = getAllResponseImages(response);
-          var responseValue = labelToImage[label];
-          changingHyperObjects[link.url] = {"value": responseValue, "to_text": false, "link": link};
-        }
-      }
-    }
-  });
-  return changingHyperObjects;
-}
-
 /**
  * Returns a list of all hyper elements.
  */
@@ -281,31 +346,6 @@ function getAllHyperLinks() {
     }
   }
   return hyperLinks;
-}
-
-/**
- * Use GitHub authorization to fetch the contents of a GitHub URL.
- */
-function fetchGitHubUrl(gitHubUrl) {
-  var service = getGitHubService();
-  if (service.hasAccess()) {
-    gitHubUrlParts = gitHubUrl.split("/");
-    gitHubIndex = gitHubUrlParts.indexOf("github.com");
-    orgName = gitHubUrlParts[gitHubIndex + 1];
-    repoName = gitHubUrlParts[gitHubIndex + 2];
-    blobIndex = gitHubUrlParts.indexOf("blob");
-    branch = gitHubUrlParts[blobIndex + 1];
-    path = gitHubUrlParts.slice(blobIndex + 2).join("/");
-    var url = "https://api.github.com/repos/" + orgName + "/" + repoName + "/contents/" +
-        path + "?ref=" + branch;
-    var response = UrlFetchApp.fetch(url, {
-      headers: {
-        Authorization: "Bearer " + service.getAccessToken(),
-        Accept: "application/vnd.github.v3.raw"
-      }
-    });
-    return response.getContentText();
-  }
 }
 
 function getAllTextElements(element) {
@@ -412,74 +452,39 @@ function getAllLinks(element) {
 }
 
 /**
- * Reset the authorization state, so that it can be re-tested.
- */
-function reset() {
-  var service = getGitHubService();
-  service.reset();
-}
-
-/**
  * Configures the GitHub authorization service.
  */
-function getGitHubService() {
-  var gitHubClientId = getScriptProperties().getProperty("GITHUB_CLIENT_ID");
-  var gitHubClientSecret = getScriptProperties().getProperty("GITHUB_CLIENT_SECRET");
+function getGitHubServiceWithProperties(scriptProperties, userProperties) {
+  var gitHubClientId = scriptProperties.getProperty("GITHUB_CLIENT_ID");
+  var gitHubClientSecret = scriptProperties.getProperty("GITHUB_CLIENT_SECRET");
   return OAuth2.createService("GitHub")
     .setAuthorizationBaseUrl("https://github.com/login/oauth/authorize")
     .setTokenUrl("https://github.com/login/oauth/access_token")
     .setClientId(gitHubClientId)
     .setClientSecret(gitHubClientSecret)
     .setCallbackFunction("authCallback")
-    .setPropertyStore(getUserProperties())
+    .setPropertyStore(userProperties)
     .setScope("repo") // Need access to code
     .setParam("allow_signup", true);
 }
 
 /**
- * Prompts the user for a modal dialog to gain GitHub access.
+ * Reset the authorization state, so that it can be re-tested.
  */
-function askForGitHubAccess() {
-  var gitHubService = getGitHubService();
-  if (!gitHubService.hasAccess()) {
-    var authorizationUrl = gitHubService.getAuthorizationUrl();
-    // Close the modal after authorization is attempted.
-    var template = HtmlService.createTemplateFromFile("github_auth");
-    template.authorizationUrl = authorizationUrl;
-    var page = template.evaluate().setHeight(50);
-    DocumentApp.getUi().showModalDialog(page, "Hyper: Authorize GitHub");
-  }
-}
-
-/**
- * Blocks until GitHub access is established.
- */
-function waitForGitHubAccess() {
-  var gitHubService = getGitHubService();
-  while (!gitHubService.hasAccess()) {
-    Utilities.sleep(5000);
-  }
-}
-
-function getUserProperties() {
-  if (userProperties === null) {
-    userProperties = PropertiesService.getUserProperties();
-  }
-  return userProperties;
-}
-
-function getScriptProperties() {
-  if (scriptProperties === null) {
-    scriptProperties = PropertiesService.getScriptProperties();
-  }
-  return scriptProperties;
+function reset() {
+  var userProperties = PropertiesService.getUserProperties();
+  var scriptProperties = PropertiesService.getScriptProperties();
+  var service = getGitHubServiceWithProperties(scriptProperties, userProperties);
+  service.reset();
 }
 
 /**
  * Handles the GitHub OAuth callback.
  */
 function authCallback(request) {
-  var service = getGitHubService();
+  var userProperties = PropertiesService.getUserProperties();
+  var scriptProperties = PropertiesService.getScriptProperties();
+  var service = getGitHubServiceWithProperties(scriptProperties, userProperties);
   var authorized = service.handleCallback(request);
   var template = HtmlService.createTemplateFromFile("github_oauth_callback");
   var callbackMessage = template.callbackMessage = authorized ?
