@@ -177,7 +177,7 @@ function hyperize() {
           var responseKeyIndex = response.indexOf(label);
           if (responseKeyIndex != -1) {
             var responseJSON = JSON.parse(response);
-            var labelToImage = getAllResponseImages(response);
+            var labelToImage = getAllResponseImages(response, url);
             var responseValue = labelToImage[label];
             changingHyperObjects[link.url] = {"value": responseValue, "to_text": false, "link": link};
           }
@@ -285,7 +285,7 @@ function splitTextByLinks(textElement, links) {
   return newTextElements;
 }
 
-function getAllResponseImages(response) {
+function getAllResponseImages(response, url) {
   var responseJSON = JSON.parse(response);
   var cells = responseJSON.cells;
   var labelsToImages = {};
@@ -326,7 +326,8 @@ function getAllResponseImages(response) {
   });
 
   if (_.size(labels) !== _.size(labelsToImages)) {
-    throw new Error("Not every label corresponds to an image!");
+    var labelsNotInMap = _.difference(labels, _.keys(labelsToImages));
+    throw new Error("Not every label (" + labelsNotInMap + ") corresponds to an image in: " + url);
   }
 
   return labelsToImages;
