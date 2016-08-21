@@ -1,0 +1,12 @@
+<!DOCTYPE html>
+<html>
+  <head>
+     <script>
+       function onSuccess(result) {
+         google.script.run.hyperizeCached();
+       }
+    </script>
+     <base target="_top">
+  </head>
+  <body><button onclick="google.script.run.withSuccessHandler(onSuccess).runAndCacheAll();">Hyperize</button></body>
+</html>

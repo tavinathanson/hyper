@@ -67,10 +67,74 @@ function bodyPath(el, path) {
   return path;
 };
 
+function hyperize() {
+  var ui = HtmlService.createHtmlOutputFromFile("Sidebar")
+      .setTitle("Hyper");
+  DocumentApp.getUi().showSidebar(ui);
+}
+
+function hyperizeCached() {
+  var cache = CacheService.getDocumentCache();
+  var changingHyperObjects = cache.get("hyperObjects");
+
+  var textElements = getAllTextElements();
+  _.each(textElements, function(textElement) {
+    var links = getLinksFromText(textElement);
+    var changingLinksFromText = [];
+    _.each(links, function(link) {
+      if (changingHyperObjects.hasOwnProperty(link.url)) {
+        changingLinksFromText.push(link);
+      }
+    });
+    if (changingLinksFromText.length > 0) {
+      var newTextElements = splitTextByLinks(textElement, changingLinksFromText);
+      var parentElement = textElement.getParent();
+      var textElementIndex = parentElement.getChildIndex(textElement);
+      parentElement.removeChild(textElement);
+
+      var i = 0;
+      _.each(newTextElements, function(newTextElement) {
+        if (newTextElement.getText().length > 0) {
+          parentElement.insertText(textElementIndex + i, newTextElement);
+          i += 1;
+        }
+      });
+    }
+  });
+
+  // We must re-run to get the split elements.
+  changingHyperObjects = getAllChangingHyperObjects();
+  _.each(_.allKeys(changingHyperObjects), function(url) {
+    var responseValue = changingHyperObjects[url].value;
+    var toText = changingHyperObjects[url].to_text;
+    var link = changingHyperObjects[url].link;
+    var linkElement = link.element;
+    var parentElement = linkElement.getParent();
+    var elementIndex = parentElement.getChildIndex(linkElement);
+    if (toText === true) {
+      parentElement.removeChild(linkElement);
+      parentElement.insertText(elementIndex, responseValue);
+      var newElement = parentElement.getChild(elementIndex);
+
+      newElement.setLinkUrl(link.url);
+      newElement.setUnderline(false);
+      newElement.setForegroundColor(HYPERIZED_COLOR);
+    }
+    // No hyper text label found? Look for images!
+    else {
+      parentElement.removeChild(linkElement);
+      parentElement.insertInlineImage(elementIndex, responseValue);
+      var newElement = parentElement.getChild(elementIndex);
+
+      newElement.setLinkUrl(link.url);
+    }
+  });
+}
+
 /**
  * Replace hyper link elements with the text that they point to.
  */
-function hyperize() {
+function runAndCacheAll() {
   var userProperties = PropertiesService.getUserProperties();
   var scriptProperties = PropertiesService.getScriptProperties();
   var fetchedUrls = {};
@@ -192,30 +256,9 @@ function hyperize() {
 
   // Split all links into their own text elements
   var changingHyperObjects = getAllChangingHyperObjects();
-  var textElements = getAllTextElements();
-  _.each(textElements, function(textElement) {
-    var links = getLinksFromText(textElement);
-    var changingLinksFromText = [];
-    _.each(links, function(link) {
-      if (changingHyperObjects.hasOwnProperty(link.url)) {
-        changingLinksFromText.push(link);
-      }
-    });
-    if (changingLinksFromText.length > 0) {
-      var newTextElements = splitTextByLinks(textElement, changingLinksFromText);
-      var parentElement = textElement.getParent();
-      var textElementIndex = parentElement.getChildIndex(textElement);
-      parentElement.removeChild(textElement);
 
-      var i = 0;
-      _.each(newTextElements, function(newTextElement) {
-        if (newTextElement.getText().length > 0) {
-          parentElement.insertText(textElementIndex + i, newTextElement);
-          i += 1;
-        }
-      });
-    }
-  });
+  var cache = CacheService.getDocumentCache();
+  cache.put("hyperObjects", changingHyperObjects);
 
   // We must re-run to get the split elements.
   changingHyperObjects = getAllChangingHyperObjects();
