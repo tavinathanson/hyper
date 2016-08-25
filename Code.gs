@@ -71,9 +71,20 @@ function bodyPath(el, path) {
  * Replace hyper link elements with the text that they point to.
  */
 function hyperize() {
+  var errors = [];
+
   var userProperties = PropertiesService.getUserProperties();
   var scriptProperties = PropertiesService.getScriptProperties();
+
+  // Cached results after fetching URLs and looking for images in responses.
   var fetchedUrls = {};
+  var responseImages = {};
+
+  askForGitHubAccess();
+  var gitHubService = waitForGitHubAccess();
+
+  // Be sure not to grab this on every URL fetch.
+  var accessToken = gitHubService.getAccessToken();
 
   /**
    * Configures the GitHub authorization service.
@@ -102,41 +113,51 @@ function hyperize() {
    */
   function waitForGitHubAccess() {
     var gitHubService = getGitHubService();
+    var numTries = 0;
     while (!gitHubService.hasAccess()) {
-      Utilities.sleep(5000);
+      if (numTries > 10) {
+        throw new Error("Cannot reach GitHub.");
+      }
+
+      Utilities.sleep(1000);
+      numTries += 1;
     }
+
+    return gitHubService;
   }
 
   /**
    * Use GitHub authorization to fetch the contents of a GitHub URL.
    */
   function fetchGitHubUrl(gitHubUrl) {
-    var service = getGitHubService();
-    if (service.hasAccess()) {
-      if (fetchedUrls.hasOwnProperty(gitHubUrl)) {
-        return fetchedUrls[gitHubUrl];
-      }
+    if (fetchedUrls.hasOwnProperty(gitHubUrl)) {
+      return fetchedUrls[gitHubUrl];
+    }
 
-      gitHubUrlParts = gitHubUrl.split("/");
-      gitHubIndex = gitHubUrlParts.indexOf("github.com");
-      orgName = gitHubUrlParts[gitHubIndex + 1];
-      repoName = gitHubUrlParts[gitHubIndex + 2];
-      blobIndex = gitHubUrlParts.indexOf("blob");
-      branch = gitHubUrlParts[blobIndex + 1];
-      path = gitHubUrlParts.slice(blobIndex + 2).join("/");
-      var url = "https://api.github.com/repos/" + orgName + "/" + repoName + "/contents/" +
-          path + "?ref=" + branch;
+    gitHubUrlParts = gitHubUrl.split("/");
+    gitHubIndex = gitHubUrlParts.indexOf("github.com");
+    orgName = gitHubUrlParts[gitHubIndex + 1];
+    repoName = gitHubUrlParts[gitHubIndex + 2];
+    blobIndex = gitHubUrlParts.indexOf("blob");
+    branch = gitHubUrlParts[blobIndex + 1];
+    path = gitHubUrlParts.slice(blobIndex + 2).join("/");
+    var url = "https://api.github.com/repos/" + orgName + "/" + repoName + "/contents/" +
+        path + "?ref=" + branch;
+    try {
       var response = UrlFetchApp.fetch(url, {
         headers: {
-          Authorization: "Bearer " + service.getAccessToken(),
+          Authorization: "Bearer " + accessToken,
           Accept: "application/vnd.github.v3.raw"
         }
       });
-
-      Utilities.sleep(1000);
-      fetchedUrls[gitHubUrl] = response.getContentText();
-      return response.getContentText();
     }
+    catch (e) {
+      errors.push(e.message);
+      return null;
+    }
+
+    fetchedUrls[gitHubUrl] = response.getContentText();
+    return response.getContentText();
   }
 
   function getAllChangingHyperObjects() {
@@ -153,33 +174,37 @@ function hyperize() {
         response = UrlFetchApp.fetch(realUrl).getContentText();
       }
 
-      if (url.indexOf("?hyper=") !== -1) {
-        var key = url.split("?hyper=")[1]
-        var responseKey = "{{{" + key + ":";
-        var responseKeyIndex = response.indexOf(responseKey);
-        if (responseKeyIndex !== -1) {
-          var responsePartial = response.substr(responseKeyIndex);
-          var responsePartialKeyEndIndex = responseKey.length;
-          var responsePartialValueEndIndex = responsePartial.indexOf("}}}");
-          var responseValue = responsePartial.substr(
-            responsePartialKeyEndIndex,
-            responsePartialValueEndIndex - responsePartialKeyEndIndex);
-          if (link.isText) {
-            // This is called before the links are chopped up. (And after, though the links will have different start/end offsets then.)
-            if (link.element.getText().slice(link.startOffset, link.endOffsetInclusive + 1) !== responseValue) {
-              changingHyperObjects[link.url] = {"value": responseValue, "to_text": true, "link": link};
+      if (response !== null) {
+        if (url.indexOf("?hyper=") !== -1) {
+          var key = url.split("?hyper=")[1]
+          var responseKey = "{{{" + key + ":";
+          var responseKeyIndex = response.indexOf(responseKey);
+          if (responseKeyIndex !== -1) {
+            var responsePartial = response.substr(responseKeyIndex);
+            var responsePartialKeyEndIndex = responseKey.length;
+            var responsePartialValueEndIndex = responsePartial.indexOf("}}}");
+            var responseValue = responsePartial.substr(
+              responsePartialKeyEndIndex,
+              responsePartialValueEndIndex - responsePartialKeyEndIndex);
+            if (link.isText) {
+              // This is called before the links are chopped up. (And after, though the links will have different start/end offsets then.)
+              if (link.element.getText().slice(link.startOffset, link.endOffsetInclusive + 1) !== responseValue) {
+                changingHyperObjects[link.url] = {"value": responseValue, "to_text": true, "link": link};
+              }
             }
           }
-        }
-        else {
-          var key = url.split("?hyper=")[1]
-          var label = "{{{" + key + "}}}";
-          var responseKeyIndex = response.indexOf(label);
-          if (responseKeyIndex != -1) {
-            var responseJSON = JSON.parse(response);
-            var labelToImage = getAllResponseImages(response, url);
-            var responseValue = labelToImage[label];
-            changingHyperObjects[link.url] = {"value": responseValue, "to_text": false, "link": link};
+          else {
+            var key = url.split("?hyper=")[1]
+            var label = "{{{" + key + "}}}";
+            var responseKeyIndex = response.indexOf(label);
+            if (responseKeyIndex != -1) {
+              var responseJSON = JSON.parse(response);
+              var labelToImage = getAllResponseImages(response, url);
+              if (labelToImage !== null) {
+                var responseValue = labelToImage[label];
+                changingHyperObjects[link.url] = {"value": responseValue, "to_text": false, "link": link};
+              }
+            }
           }
         }
       }
@@ -187,8 +212,61 @@ function hyperize() {
     return changingHyperObjects;
   }
 
-  askForGitHubAccess();
-  waitForGitHubAccess();
+  function getAllResponseImages(response, url) {
+    if (responseImages.hasOwnProperty(response)) {
+      return responseImages[response];
+    }
+
+    var responseJSON = JSON.parse(response);
+    var cells = responseJSON.cells;
+    var labelsToImages = {};
+    var labels = [];
+    var lastLabel = null;
+    var lastImage = null;
+    _.each(cells, function(cell) {
+      var outputs = cell.outputs;
+      _.each(outputs, function(output) {
+        // TODO: Use better contains.
+        if ("data" in output) {
+          if ("image/png" in output["data"]) {
+            var decoded = Utilities.base64Decode(output["data"]["image/png"]);
+            var blob = Utilities.newBlob(decoded);
+            if (lastLabel !== null) {
+              labelsToImages[lastLabel] = blob;
+              lastLabel = null;
+            }
+          }
+        }
+        if ("text" in output) {
+          var text = output["text"];
+          _.each(text, function(line) {
+            var line = String(line);
+            if (line.indexOf("{{{") !== -1 && line.indexOf("}}}") !== -1) {
+              var startLabelIndex = line.indexOf("{{{");
+              var endLabelIndex = line.indexOf("}}}");
+              var label = line.slice(startLabelIndex, endLabelIndex + "}}}".length);
+              // Don't include non-image hyper labels
+              if (label.indexOf(":") === -1) {
+                labels.push(label);
+                lastLabel = label;
+              }
+            }
+          });
+        }
+      });
+    });
+
+    responseImages[response] = labelsToImages;
+
+    if (_.size(labels) !== _.size(labelsToImages)) {
+      var labelsNotInMap = _.difference(labels, _.keys(labelsToImages));
+      errors.push("Not every label (" + labelsNotInMap +
+                  ") corresponds to an image in: " + url);
+      return null;
+    }
+
+    return labelsToImages;
+  }
 
   // Split all links into their own text elements
   var changingHyperObjects = getAllChangingHyperObjects();
@@ -244,6 +322,10 @@ function hyperize() {
       newElement.setLinkUrl(link.url);
     }
   });
+
+  if (errors.length > 0) {
+    DocumentApp.getUi().alert("Errors encountered: " + errors);
+  }
 }
 
 function splitTextByLinks(textElement, links) {
@@ -283,54 +365,6 @@ function splitTextByLinks(textElement, links) {
   newTextElements.push(newTextElement);
 
   return newTextElements;
-}
-
-function getAllResponseImages(response, url) {
-  var responseJSON = JSON.parse(response);
-  var cells = responseJSON.cells;
-  var labelsToImages = {};
-  var labels = [];
-  var lastLabel = null;
-  var lastImage = null;
-  _.each(cells, function(cell) {
-    var outputs = cell.outputs;
-    _.each(outputs, function(output) {
-      // TODO: Use better contains.
-      if ("data" in output) {
-        if ("image/png" in output["data"]) {
-          var decoded = Utilities.base64Decode(output["data"]["image/png"]);
-          var blob = Utilities.newBlob(decoded);
-          if (lastLabel !== null) {
-            labelsToImages[lastLabel] = blob;
-            lastLabel = null;
-          }
-        }
-      }
-      if ("text" in output) {
-        var text = output["text"];
-        _.each(text, function(line) {
-          var line = String(line);
-          if (line.indexOf("{{{") !== -1 && line.indexOf("}}}") !== -1) {
-            var startLabelIndex = line.indexOf("{{{");
-            var endLabelIndex = line.indexOf("}}}");
-            var label = line.slice(startLabelIndex, endLabelIndex + "}}}".length);
-            // Don't include non-image hyper labels
-            if (label.indexOf(":") === -1) {
-              labels.push(label);
-              lastLabel = label;
-            }
-          }
-        });
-      }
-    });
-  });
-
-  if (_.size(labels) !== _.size(labelsToImages)) {
-    var labelsNotInMap = _.difference(labels, _.keys(labelsToImages));
-    throw new Error("Not every label (" + labelsNotInMap + ") corresponds to an image in: " + url);
-  }
-
-  return labelsToImages;
 }
 
 /**
