@@ -72,7 +72,7 @@ function bodyPath(el, path) {
 
 function grabUrls() {
   var urls = hyperize(true);
-  DocumentApp.getUi().alert("URLs: \n" + urls.join("\n"));
+  DocumentApp.getUi().alert("URLs: \n" + _.uniq(urls).join("\n"));
 }
 
 function replaceUrls() {
@@ -250,6 +250,14 @@ function hyperize(onlyGrabUrls) {
                 changingHyperObjects[link.url].push({"value": responseValue, "to_text": false, "link": link});
               }
             }
+            // We get here if neither the hyper label or image label were found in the response
+            else {
+              errors.push("Not found in response: " + label + " (" + url + ")");
+              if (!changingHyperObjects.hasOwnProperty(link.url)) {
+                changingHyperObjects[link.url] = [];
+              }
+              changingHyperObjects[link.url].push({"value": "[Not Found]", "to_text": true, "link": link});
+            }
           }
         }
       }
@@ -388,7 +396,7 @@ function hyperize(onlyGrabUrls) {
   showHyperElements();
 
   if (errors.length > 0) {
-    DocumentApp.getUi().alert("Errors encountered: " + errors);
+    DocumentApp.getUi().alert("Errors encountered: \n" + _.uniq(errors).join("\n"));
   }
 }
 
