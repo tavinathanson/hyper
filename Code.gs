@@ -11,6 +11,8 @@ function onOpen(e) {
     .addItem("Hyperize Links", "hyperize")
     .addItem("Hide Hyper Links", "hideHyperElements")
     .addItem("Show Hyper Links", "showHyperElements")
+    .addItem("Grab Hyper URLs", "grabUrls")
+    .addItem("Find and Replace URLs", "replaceUrls")
     .addItem("Remove GitHub Authorization", "reset")
     .addToUi();
 }
@@ -45,6 +47,7 @@ function colorHyperElements(color) {
     if (link.element.getType() == DocumentApp.ElementType.TEXT) {
       link.element.setForegroundColor(link.startOffset,
                                       link.endOffsetInclusive, color);
+      link.element.setUnderline(false);
     }
   });
 }
@@ -67,10 +70,45 @@ function bodyPath(el, path) {
   return path;
 };
 
+function grabUrls() {
+  var urls = hyperize(true);
+  DocumentApp.getUi().alert("URLs: \n" + urls.join("\n"));
+}
+
+function replaceUrls() {
+  // From http://stackoverflow.com/a/17606289
+  String.prototype.replaceAll = function(search, replacement) {
+    var target = this;
+    return target.split(search).join(replacement);
+  };
+
+  var ui = DocumentApp.getUi();
+  var textToReplaceResponse = ui.prompt(
+    "Find and Replace Hyper Link URLs",
+    "URL Text to Replace",
+    ui.ButtonSet.OK_CANCEL);
+  var newTextResponse = ui.prompt(
+    "Find and Replace Hyper Link URLs",
+    "New URL Text",
+    ui.ButtonSet.OK_CANCEL);
+  if (textToReplaceResponse.getSelectedButton() === ui.Button.OK &&
+      newTextResponse.getSelectedButton() === ui.Button.OK) {
+    var textToReplace = textToReplaceResponse.getResponseText();
+    var newText = newTextResponse.getResponseText();
+    var links = getAllHyperLinks();
+    _.each(links, function(link) {
+      if (link.url.indexOf(textToReplace) !== -1) {
+        var updatedUrl = link.url.replaceAll(textToReplace, newText);
+        link.element.setLinkUrl(link.startOffset, link.endOffsetInclusive, updatedUrl);
+      }
+    });
+  }
+}
+
 /**
  * Replace hyper link elements with the text that they point to.
  */
-function hyperize() {
+function hyperize(onlyGrabUrls) {
   var errors = [];
 
   var userProperties = PropertiesService.getUserProperties();
@@ -156,8 +194,9 @@ function hyperize() {
       return null;
     }
 
-    fetchedUrls[gitHubUrl] = response.getContentText();
-    return response.getContentText();
+    var contentText = response.getContentText();
+    fetchedUrls[gitHubUrl] = contentText;
+    return contentText;
   }
 
   function getAllChangingHyperObjects() {
@@ -189,7 +228,10 @@ function hyperize() {
             if (link.isText) {
               // This is called before the links are chopped up. (And after, though the links will have different start/end offsets then.)
               if (link.element.getText().slice(link.startOffset, link.endOffsetInclusive + 1) !== responseValue) {
-                changingHyperObjects[link.url] = {"value": responseValue, "to_text": true, "link": link};
+                if (!changingHyperObjects.hasOwnProperty(link.url)) {
+                  changingHyperObjects[link.url] = [];
+                }
+                changingHyperObjects[link.url].push({"value": responseValue, "to_text": true, "link": link});
               }
             }
           }
@@ -202,7 +244,10 @@ function hyperize() {
               var labelToImage = getAllResponseImages(response, url);
               if (labelToImage !== null) {
                 var responseValue = labelToImage[label];
-                changingHyperObjects[link.url] = {"value": responseValue, "to_text": false, "link": link};
+                if (!changingHyperObjects.hasOwnProperty(link.url)) {
+                  changingHyperObjects[link.url] = [];
+                }
+                changingHyperObjects[link.url].push({"value": responseValue, "to_text": false, "link": link});
               }
             }
           }
@@ -268,8 +313,21 @@ function hyperize() {
     return labelsToImages;
   }
 
+  if (onlyGrabUrls === true) {
+    var realUrls = {};
+    var links = getAllHyperLinks();
+    _.each(links, function(link) {
+      var url = link.url;
+      var realUrl = url.split("?hyper")[0];
+      realUrls[realUrl] = true;
+    });
+
+    return _.keys(realUrls);
+  }
+
   // Split all links into their own text elements
   var changingHyperObjects = getAllChangingHyperObjects();
+
   var textElements = getAllTextElements();
   _.each(textElements, function(textElement) {
     var links = getLinksFromText(textElement);
@@ -298,30 +356,36 @@ function hyperize() {
   // We must re-run to get the split elements.
   changingHyperObjects = getAllChangingHyperObjects();
   _.each(_.allKeys(changingHyperObjects), function(url) {
-    var responseValue = changingHyperObjects[url].value;
-    var toText = changingHyperObjects[url].to_text;
-    var link = changingHyperObjects[url].link;
-    var linkElement = link.element;
-    var parentElement = linkElement.getParent();
-    var elementIndex = parentElement.getChildIndex(linkElement);
-    if (toText === true) {
-      parentElement.removeChild(linkElement);
-      parentElement.insertText(elementIndex, responseValue);
-      var newElement = parentElement.getChild(elementIndex);
+    var objectsForUrl = changingHyperObjects[url];
+    _.each(objectsForUrl, function(hyperObject) {
+      var responseValue = hyperObject.value;
+      var toText = hyperObject.to_text;
+      var link = hyperObject.link;
+      var linkElement = link.element;
+      var parentElement = linkElement.getParent();
+      var elementIndex = parentElement.getChildIndex(linkElement);
+      if (toText === true) {
+        parentElement.removeChild(linkElement);
+        parentElement.insertText(elementIndex, responseValue);
+        var newElement = parentElement.getChild(elementIndex);
 
-      newElement.setLinkUrl(link.url);
-      newElement.setUnderline(false);
-      newElement.setForegroundColor(HYPERIZED_COLOR);
-    }
-    // No hyper text label found? Look for images!
-    else {
-      parentElement.removeChild(linkElement);
-      parentElement.insertInlineImage(elementIndex, responseValue);
-      var newElement = parentElement.getChild(elementIndex);
+        newElement.setLinkUrl(link.url);
+        newElement.setUnderline(false);
+        newElement.setForegroundColor(HYPERIZED_COLOR);
+      }
+      // No hyper text label found? Look for images!
+      else {
+        parentElement.removeChild(linkElement);
+        parentElement.insertInlineImage(elementIndex, responseValue);
+        var newElement = parentElement.getChild(elementIndex);
 
-      newElement.setLinkUrl(link.url);
-    }
+        newElement.setLinkUrl(link.url);
+      }
+    });
   });
+
+  // Some links didn't change, but color them anyway.
+  showHyperElements();
 
   if (errors.length > 0) {
     DocumentApp.getUi().alert("Errors encountered: " + errors);
