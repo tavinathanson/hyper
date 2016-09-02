@@ -12,6 +12,7 @@ function onOpen(e) {
     .addItem("Hide Hyper Links", "hideHyperElements")
     .addItem("Show Hyper Links", "showHyperElements")
     .addItem("Grab Hyper URLs", "grabUrls")
+    .addItem("Peek at Text Changes", "checkForTextChanges")
     .addItem("Find and Replace URLs", "replaceUrls")
     .addItem("Remove GitHub Authorization", "reset")
     .addToUi();
@@ -75,6 +76,11 @@ function grabUrls() {
   DocumentApp.getUi().alert("URLs: \n" + _.uniq(urls).join("\n"));
 }
 
+function checkForTextChanges() {
+  var changes = hyperize(false, true);
+  DocumentApp.getUi().alert("Changes: \n" + changes.join("\n"));
+}
+
 function replaceUrls() {
   // From http://stackoverflow.com/a/17606289
   String.prototype.replaceAll = function(search, replacement) {
@@ -108,7 +114,7 @@ function replaceUrls() {
 /**
  * Replace hyper link elements with the text that they point to.
  */
-function hyperize(onlyGrabUrls) {
+function hyperize(onlyGrabUrls, onlyCheckForTextChanges) {
   var errors = [];
 
   var userProperties = PropertiesService.getUserProperties();
@@ -335,6 +341,27 @@ function hyperize(onlyGrabUrls) {
 
   // Split all links into their own text elements
   var changingHyperObjects = getAllChangingHyperObjects();
+
+  if (onlyCheckForTextChanges === true) {
+    var changingTexts = [];
+    _.each(changingHyperObjects, function(hyperObjects) {
+      _.each(hyperObjects, function(hyperObject) {
+        var responseValue = hyperObject.value;
+        var toText = hyperObject.to_text;
+        if (toText == true) {
+          var link = hyperObject.link;
+          var linkElement = link.element;
+          var oldText = linkElement.getText().slice(link.startOffset, link.endOffsetInclusive + 1)
+          if (oldText !== responseValue) {
+            changingTexts.push("Text [" + oldText + "] will change to [" +
+                               responseValue + "]");
+          }
+        }
+      });
+    });
+
+    return _.uniq(changingTexts);
+  }
 
   var textElements = getAllTextElements();
   _.each(textElements, function(textElement) {
