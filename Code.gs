@@ -237,12 +237,18 @@ function hyperize(onlyGrabUrls, onlyCheckForTextChanges) {
                 if (!changingHyperObjects.hasOwnProperty(link.url)) {
                   changingHyperObjects[link.url] = [];
                 }
-                changingHyperObjects[link.url].push({"value": responseValue, "to_text": true, "link": link});
+                changingHyperObjects[link.url].push({"value": responseValue, "to_text": true, "link": link, "image_size": null});
               }
             }
           }
           else {
-            var key = url.split("?hyper=")[1]
+            var keyAndSize = url.split("?hyper=")[1]
+            var keyAndSizeSplit = keyAndSize.split("&size=")
+            var key = keyAndSizeSplit[0]
+            var imageSize = null;
+            if (keyAndSizeSplit.length > 1) {
+              imageSize = keyAndSizeSplit[1]
+            }
             var label = "{{{" + key + "}}}";
             var responseKeyIndex = response.indexOf(label);
             if (responseKeyIndex != -1) {
@@ -253,7 +259,7 @@ function hyperize(onlyGrabUrls, onlyCheckForTextChanges) {
                 if (!changingHyperObjects.hasOwnProperty(link.url)) {
                   changingHyperObjects[link.url] = [];
                 }
-                changingHyperObjects[link.url].push({"value": responseValue, "to_text": false, "link": link});
+                changingHyperObjects[link.url].push({"value": responseValue, "to_text": false, "link": link, "image_size": imageSize});
               }
             }
             // We get here if neither the hyper label or image label were found in the response
@@ -262,7 +268,7 @@ function hyperize(onlyGrabUrls, onlyCheckForTextChanges) {
               if (!changingHyperObjects.hasOwnProperty(link.url)) {
                 changingHyperObjects[link.url] = [];
               }
-              changingHyperObjects[link.url].push({"value": "[Not Found]", "to_text": true, "link": link});
+              changingHyperObjects[link.url].push({"value": "[Not Found]", "to_text": true, "link": link, "image_size": null});
             }
           }
         }
@@ -410,11 +416,20 @@ function hyperize(onlyGrabUrls, onlyCheckForTextChanges) {
       }
       // No hyper text label found? Look for images!
       else {
+        var imageSize = hyperObject.image_size;
         parentElement.removeChild(linkElement);
         parentElement.insertInlineImage(elementIndex, responseValue);
         var newElement = parentElement.getChild(elementIndex);
 
         newElement.setLinkUrl(link.url);
+
+        // Resize if a ratio is specified.
+        if (imageSize !== null) {
+          var curWidth = newElement.getWidth();
+          var curHeight = newElement.getHeight();
+          newElement.setWidth(curWidth * imageSize);
+          newElement.setHeight(curHeight * imageSize);
+        }
       }
     });
   });
