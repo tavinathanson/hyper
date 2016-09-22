@@ -219,6 +219,14 @@ function hyperize(onlyGrabUrls, onlyCheckForTextChanges) {
         response = UrlFetchApp.fetch(realUrl).getContentText();
       }
 
+      function pushError(link, label) {
+        errors.push("Not found in response: " + label + " (" + link.url + ")");
+        if (!changingHyperObjects.hasOwnProperty(link.url)) {
+          changingHyperObjects[link.url] = [];
+        }
+        changingHyperObjects[link.url].push({"value": "[Not Found]", "to_text": true, "link": link, "image_size": null});
+      }
+
       if (response !== null) {
         if (url.indexOf("?hyper=") !== -1) {
           var key = url.split("?hyper=")[1]
@@ -254,21 +262,19 @@ function hyperize(onlyGrabUrls, onlyCheckForTextChanges) {
             if (responseKeyIndex != -1) {
               var responseJSON = JSON.parse(response);
               var labelToImage = getAllResponseImages(response, url);
-              if (labelToImage !== null) {
+              if (labelToImage !== null && labelToImage.hasOwnProperty(label)) {
                 var responseValue = labelToImage[label];
                 if (!changingHyperObjects.hasOwnProperty(link.url)) {
                   changingHyperObjects[link.url] = [];
                 }
                 changingHyperObjects[link.url].push({"value": responseValue, "to_text": false, "link": link, "image_size": imageSize});
               }
-            }
-            // We get here if neither the hyper label or image label were found in the response
-            else {
-              errors.push("Not found in response: " + label + " (" + url + ")");
-              if (!changingHyperObjects.hasOwnProperty(link.url)) {
-                changingHyperObjects[link.url] = [];
+              else {
+                pushError(link, label);
               }
-              changingHyperObjects[link.url].push({"value": "[Not Found]", "to_text": true, "link": link, "image_size": null});
+            }
+            else {
+              pushError(link, label);
             }
           }
         }
