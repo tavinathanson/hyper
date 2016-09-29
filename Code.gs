@@ -219,12 +219,12 @@ function hyperize(onlyGrabUrls, onlyCheckForTextChanges) {
         response = UrlFetchApp.fetch(realUrl).getContentText();
       }
 
-      function pushError(link, label) {
+      function pushError(link, key, label) {
         errors.push("Not found in response: " + label + " (" + link.url + ")");
         if (!changingHyperObjects.hasOwnProperty(link.url)) {
           changingHyperObjects[link.url] = [];
         }
-        changingHyperObjects[link.url].push({"value": "[Not Found]", "to_text": true, "link": link, "image_size": null});
+        changingHyperObjects[link.url].push({"value": "[Not Found]", "to_text": true, "link": link, "image_size": null, "key": key});
       }
 
       if (response !== null) {
@@ -245,7 +245,7 @@ function hyperize(onlyGrabUrls, onlyCheckForTextChanges) {
                 if (!changingHyperObjects.hasOwnProperty(link.url)) {
                   changingHyperObjects[link.url] = [];
                 }
-                changingHyperObjects[link.url].push({"value": responseValue, "to_text": true, "link": link, "image_size": null});
+                changingHyperObjects[link.url].push({"value": responseValue, "to_text": true, "link": link, "image_size": null, "key": key});
               }
             }
           }
@@ -267,14 +267,14 @@ function hyperize(onlyGrabUrls, onlyCheckForTextChanges) {
                 if (!changingHyperObjects.hasOwnProperty(link.url)) {
                   changingHyperObjects[link.url] = [];
                 }
-                changingHyperObjects[link.url].push({"value": responseValue, "to_text": false, "link": link, "image_size": imageSize});
+                changingHyperObjects[link.url].push({"value": responseValue, "to_text": false, "link": link, "image_size": imageSize, "key": key});
               }
               else {
-                pushError(link, label);
+                pushError(link, key, label);
               }
             }
             else {
-              pushError(link, label);
+              pushError(link, key, label);
             }
           }
         }
@@ -365,8 +365,9 @@ function hyperize(onlyGrabUrls, onlyCheckForTextChanges) {
           var linkElement = link.element;
           var oldText = linkElement.getText().slice(link.startOffset, link.endOffsetInclusive + 1)
           if (oldText !== responseValue) {
-            changingTexts.push("Text [" + oldText + "] will change to [" +
-                               responseValue + "]");
+            changingTexts.push("Text [" + oldText + "] (" + hyperObject.key +
+                               ") will change to [" + responseValue + "] for " +
+                               link.url);
           }
         }
       });
