@@ -157,7 +157,7 @@ function orderFigures() {
       group = fullKey.split("&group=")[1].split("&")[0];
     }
     if (fullKey.indexOf("&new") !== -1) {
-      isNew = fullKey.split("&new")[1].split("&")[0];
+      isNew = true;
     }
     var key = fullKey.split("&")[0]
 
