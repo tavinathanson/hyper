@@ -146,7 +146,6 @@ function replaceUrls() {
 function orderFigures() {
   var changingHyperObjects = {};
   var errors = [];
-  var labelToOrderedLabel = {};
 
   function unpackKey(link) {
     var url = link.url;
@@ -195,48 +194,47 @@ function orderFigures() {
   // Re-run after splitting.
   figOrderLinks = getAllFigureOrderLinks();
   var groups = {};
+  var labelToOrderedLabel = {};
+  var sectionFigureCount = {};
+  var sectionCount = {};
   _.each(figOrderLinks, function(link) {
     var unpackedKey = unpackKey(link);
     var group = unpackedKey[1];
     groups[group] = true;
+    labelToOrderedLabel[group] = {};
+    sectionFigureCount[group] = {};
+    sectionCount[group] = 1;
   });
   groups = _.keys(groups);
 
-  var sectionCount;
-  var sectionFigureCount = {};
-  _.each(groups, function(curGroup) {
-    sectionCount = 1;
-    _.each(figOrderLinks, function(link) {
-      var unpackedKey = unpackKey(link);
-      var key = unpackedKey[0];
-      var group = unpackedKey[1];
-      var sectionNum = unpackedKey[2];
-      var isNew = unpackedKey[3];
+  _.each(figOrderLinks, function(link) {
+    var unpackedKey = unpackKey(link);
+    var key = unpackedKey[0];
+    var group = unpackedKey[1];
+    var sectionNum = unpackedKey[2];
+    var isNew = unpackedKey[3];
 
-      if (group === curGroup) {
-        if (!labelToOrderedLabel.hasOwnProperty(key)) {
-          if (sectionNum !== null) {
-            if (!sectionFigureCount.hasOwnProperty(sectionNum)) {
-              sectionFigureCount[sectionNum] = -1;
-            }
-            sectionFigureCount[sectionNum] += 1;
-            labelToOrderedLabel[key] = sectionNum + String.fromCharCode(65 + sectionFigureCount[sectionNum]);
-          }
-          else {
-            if (isNew) {
-              sectionCount += 1;
-            }
-            if (!sectionFigureCount.hasOwnProperty(sectionCount)) {
-              sectionFigureCount[sectionCount] = 0;
-            }
-            else {
-              sectionFigureCount[sectionCount] += 1;
-            }
-            labelToOrderedLabel[key] = sectionCount + String.fromCharCode(65 + sectionFigureCount[sectionCount]);
-          }
+    if (!labelToOrderedLabel[group].hasOwnProperty(key)) {
+      if (sectionNum !== null) {
+        if (!sectionFigureCount[group].hasOwnProperty(sectionNum)) {
+          sectionFigureCount[group][sectionNum] = -1;
         }
+        sectionFigureCount[group][sectionNum] += 1;
+        labelToOrderedLabel[group][key] = sectionNum + String.fromCharCode(65 + sectionFigureCount[group][sectionNum]);
       }
-    });
+      else {
+        if (isNew) {
+          sectionCount[group] += 1;
+        }
+        if (!sectionFigureCount[group].hasOwnProperty(sectionCount[group])) {
+          sectionFigureCount[group][sectionCount[group]] = 0;
+        }
+        else {
+          sectionFigureCount[group][sectionCount[group]] += 1;
+        }
+        labelToOrderedLabel[group][key] = sectionCount[group] + String.fromCharCode(65 + sectionFigureCount[group][sectionCount[group]]);
+      }
+    }
   });
 
   _.each(figOrderLinks, function(link) {
@@ -245,7 +243,8 @@ function orderFigures() {
     var elementIndex = parentElement.getChildIndex(linkElement);
     var unpackedKey = unpackKey(link);
     var key = unpackedKey[0];
-    var figValue = labelToOrderedLabel[key];
+    var group = unpackedKey[1];
+    var figValue = labelToOrderedLabel[group][key];
 
     parentElement.removeChild(linkElement);
     parentElement.insertText(elementIndex, figValue);
