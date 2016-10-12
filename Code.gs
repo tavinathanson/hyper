@@ -147,20 +147,21 @@ function orderFigures() {
   var changingHyperObjects = {};
   var errors = [];
   var labelToOrderedLabel = {};
-  var sectionCount = 1;
-  var figureCount = 0;
 
-  function getKeyAndNew(link) {
+  function unpackKey(link) {
     var url = link.url;
-    var keyAndNew = url.split("?figorder=")[1]
-    var keyAndNewSplit = keyAndNew.split("&new")
-    var key = keyAndNewSplit[0];
+    var fullKey = url.split("?figorder=")[1];
+    var group = "default";
     var isNew = false;
-    if (keyAndNewSplit.length > 1) {
-      isNew = true;
+    if (fullKey.indexOf("&group") !== -1) {
+      group = fullKey.split("&group=")[1].split("&")[0];
     }
+    if (fullKey.indexOf("&new") !== -1) {
+      isNew = fullKey.split("&new")[1].split("&")[0];
+    }
+    var key = fullKey.split("&")[0]
 
-    return [key, isNew];
+    return [key, group, isNew];
   }
 
   // First, split elements.
@@ -189,27 +190,44 @@ function orderFigures() {
 
   // Re-run after splitting.
   figOrderLinks = getAllFigureOrderLinks();
+  var groups = {};
   _.each(figOrderLinks, function(link) {
-    var keyAndNew = getKeyAndNew(link);
-    var key = keyAndNew[0];
-    var isNew = keyAndNew[1];
+    var unpackedKey = unpackKey(link);
+    var group = unpackedKey[1];
+    groups[group] = true;
+  });
+  groups = _.keys(groups);
 
-    if (!labelToOrderedLabel.hasOwnProperty(key)) {
-      if (isNew) {
-        sectionCount += 1;
-        figureCount = 0;
+  var sectionCount;
+  var figureCount;
+  _.each(groups, function(curGroup) {
+    sectionCount = 1;
+    figureCount = 0;
+    _.each(figOrderLinks, function(link) {
+      var unpackedKey = unpackKey(link);
+      var key = unpackedKey[0];
+      var group = unpackedKey[1];
+      var isNew = unpackedKey[2];
+
+      if (group === curGroup) {
+        if (!labelToOrderedLabel.hasOwnProperty(key)) {
+          if (isNew) {
+            sectionCount += 1;
+            figureCount = 0;
+          }
+          labelToOrderedLabel[key] = sectionCount + String.fromCharCode(65 + figureCount);
+          figureCount += 1;
+        }
       }
-      labelToOrderedLabel[key] = sectionCount + String.fromCharCode(65 + figureCount);
-      figureCount += 1;
-    }
+    });
   });
 
   _.each(figOrderLinks, function(link) {
     var linkElement = link.element;
     var parentElement = linkElement.getParent();
     var elementIndex = parentElement.getChildIndex(linkElement);
-    var keyAndNew = getKeyAndNew(link);
-    var key = keyAndNew[0];
+    var unpackedKey = unpackKey(link);
+    var key = unpackedKey[0];
     var figValue = labelToOrderedLabel[key];
 
     parentElement.removeChild(linkElement);
