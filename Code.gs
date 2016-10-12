@@ -153,15 +153,19 @@ function orderFigures() {
     var fullKey = url.split("?figorder=")[1];
     var group = "default";
     var isNew = false;
+    var sectionNum = null;
     if (fullKey.indexOf("&group") !== -1) {
       group = fullKey.split("&group=")[1].split("&")[0];
+    }
+    if (fullKey.indexOf("&section") !== -1) {
+      sectionNum = fullKey.split("&section=")[1].split("&")[0];
     }
     if (fullKey.indexOf("&new") !== -1) {
       isNew = true;
     }
     var key = fullKey.split("&")[0]
 
-    return [key, group, isNew];
+    return [key, group, sectionNum, isNew];
   }
 
   // First, split elements.
@@ -199,24 +203,38 @@ function orderFigures() {
   groups = _.keys(groups);
 
   var sectionCount;
-  var figureCount;
+  var sectionFigureCount = {};
   _.each(groups, function(curGroup) {
     sectionCount = 1;
-    figureCount = 0;
     _.each(figOrderLinks, function(link) {
       var unpackedKey = unpackKey(link);
       var key = unpackedKey[0];
       var group = unpackedKey[1];
-      var isNew = unpackedKey[2];
+      var sectionNum = unpackedKey[2];
+      var isNew = unpackedKey[3];
 
       if (group === curGroup) {
         if (!labelToOrderedLabel.hasOwnProperty(key)) {
-          if (isNew) {
-            sectionCount += 1;
-            figureCount = 0;
+          if (sectionNum !== null) {
+            if (!sectionFigureCount.hasOwnProperty(sectionNum)) {
+              sectionFigureCount[sectionNum] = -1;
+            }
+            sectionFigureCount[sectionNum] += 1;
+            labelToOrderedLabel[key] = sectionNum + String.fromCharCode(65 + sectionFigureCount[sectionNum]);
           }
-          labelToOrderedLabel[key] = sectionCount + String.fromCharCode(65 + figureCount);
-          figureCount += 1;
+          else {
+            if (isNew) {
+              sectionCount += 1;
+              if (!sectionFigureCount.hasOwnProperty(sectionCount)) {
+                sectionFigureCount[sectionCount] = 0;
+              }
+              else {
+                sectionFigureCount[sectionCount] += 1;
+              }
+            }
+            labelToOrderedLabel[key] = sectionCount + String.fromCharCode(65 + sectionFigureCount[sectionCount]);
+            sectionFigureCount[sectionCount] += 1;
+          }
         }
       }
     });
