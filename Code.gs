@@ -225,15 +225,14 @@ function orderFigures() {
           else {
             if (isNew) {
               sectionCount += 1;
-              if (!sectionFigureCount.hasOwnProperty(sectionCount)) {
-                sectionFigureCount[sectionCount] = 0;
-              }
-              else {
-                sectionFigureCount[sectionCount] += 1;
-              }
+            }
+            if (!sectionFigureCount.hasOwnProperty(sectionCount)) {
+              sectionFigureCount[sectionCount] = 0;
+            }
+            else {
+              sectionFigureCount[sectionCount] += 1;
             }
             labelToOrderedLabel[key] = sectionCount + String.fromCharCode(65 + sectionFigureCount[sectionCount]);
-            sectionFigureCount[sectionCount] += 1;
           }
         }
       }
