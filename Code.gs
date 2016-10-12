@@ -1,4 +1,5 @@
 var HYPERIZED_COLOR = "#cc0099";
+var FIGORDER_COLOR = "#0099cc";
 
 // Added using the project key in https://github.com/simula-innovation/gas-underscore
 var _ = Underscore.load();
@@ -14,6 +15,9 @@ function onOpen(e) {
     .addItem("Grab Hyper URLs", "grabUrls")
     .addItem("Peek at Text Changes", "checkForTextChanges")
     .addItem("Find and Replace URLs", "replaceUrls")
+    .addItem("Order Figures", "orderFigures")
+    .addItem("Hide Figure Links", "hideFigureOrderElements")
+    .addItem("Show Figure Links", "showFigureOrderElements")
     .addItem("Remove GitHub Authorization", "reset")
     .addToUi();
 }
@@ -44,6 +48,34 @@ function hideHyperElements() {
  */
 function colorHyperElements(color) {
   var links = getAllHyperLinks();
+  _.each(links, function(link) {
+    if (link.element.getType() == DocumentApp.ElementType.TEXT) {
+      link.element.setForegroundColor(link.startOffset,
+                                      link.endOffsetInclusive, color);
+      link.element.setUnderline(false);
+    }
+  });
+}
+
+/**
+ * Color figure order elements with the hyper color.
+ */
+function showFigureOrderElements() {
+  colorFigureOrderElements(FIGORDER_COLOR);
+}
+
+/**
+ * Set figure order elements back to black.
+ */
+function hideFigureOrderElements() {
+  colorFigureOrderElements("#000000");
+}
+
+/**
+ * Set figure order elements to a particular color.
+ */
+function colorFigureOrderElements(color) {
+  var links = getAllFigureOrderLinks();
   _.each(links, function(link) {
     if (link.element.getType() == DocumentApp.ElementType.TEXT) {
       link.element.setForegroundColor(link.startOffset,
@@ -109,6 +141,85 @@ function replaceUrls() {
       }
     });
   }
+}
+
+function orderFigures() {
+  var changingHyperObjects = {};
+  var errors = [];
+  var labelToOrderedLabel = {};
+  var sectionCount = 1;
+  var figureCount = 0;
+
+  function getKeyAndNew(link) {
+    var url = link.url;
+    var keyAndNew = url.split("?figorder=")[1]
+    var keyAndNewSplit = keyAndNew.split("&new")
+    var key = keyAndNewSplit[0];
+    var isNew = false;
+    if (keyAndNewSplit.length > 1) {
+      isNew = true;
+    }
+
+    return [key, isNew];
+  }
+
+  // First, split elements.
+  var figOrderLinks = getAllFigureOrderLinks();
+
+  if (figOrderLinks.length === 0) {
+    return;
+  }
+
+  var textElements = getAllTextElements();
+  _.each(textElements, function(textElement) {
+    var figOrderLinksFromText = getAllFigureOrderLinks(textElement);
+    var newTextElements = splitTextByLinks(textElement, figOrderLinksFromText);
+    var parentElement = textElement.getParent();
+    var textElementIndex = parentElement.getChildIndex(textElement);
+    parentElement.removeChild(textElement);
+
+    var i = 0;
+    _.each(newTextElements, function(newTextElement) {
+      if (newTextElement.getText().length > 0) {
+        parentElement.insertText(textElementIndex + i, newTextElement);
+        i += 1;
+      }
+    });
+  });
+
+  // Re-run after splitting.
+  figOrderLinks = getAllFigureOrderLinks();
+  _.each(figOrderLinks, function(link) {
+    var keyAndNew = getKeyAndNew(link);
+    var key = keyAndNew[0];
+    var isNew = keyAndNew[1];
+
+    if (!labelToOrderedLabel.hasOwnProperty(key)) {
+      if (isNew) {
+        sectionCount += 1;
+        figureCount = 0;
+      }
+      labelToOrderedLabel[key] = sectionCount + String.fromCharCode(65 + figureCount);
+      figureCount += 1;
+    }
+  });
+
+  _.each(figOrderLinks, function(link) {
+    var linkElement = link.element;
+    var parentElement = linkElement.getParent();
+    var elementIndex = parentElement.getChildIndex(linkElement);
+    var keyAndNew = getKeyAndNew(link);
+    var key = keyAndNew[0];
+    var figValue = labelToOrderedLabel[key];
+
+    parentElement.removeChild(linkElement);
+    parentElement.insertText(elementIndex, figValue);
+    var newElement = parentElement.getChild(elementIndex);
+
+    newElement.setLinkUrl(link.url);
+    newElement.setUnderline(false);
+    newElement.setForegroundColor(FIGORDER_COLOR);
+  });
 }
 
 /**
@@ -502,6 +613,20 @@ function getAllHyperLinks() {
     }
   }
   return hyperLinks;
+}
+
+function getAllFigureOrderLinks(element) {
+  var element = element || DocumentApp.getActiveDocument().getBody();
+  var links = getAllLinks(element);
+  var figOrderLinks = [];
+  for (var i = 0; i < links.length; i++) {
+    var link = links[i];
+    var url = link.url;
+    if (url.indexOf("?figorder") != -1) {
+      figOrderLinks.push(link);
+    }
+  }
+  return figOrderLinks;
 }
 
 function getAllTextElements(element) {
