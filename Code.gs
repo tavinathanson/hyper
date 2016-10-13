@@ -151,20 +151,16 @@ function orderFigures() {
     var url = link.url;
     var fullKey = url.split("?figorder=")[1];
     var group = "default";
-    var isNew = false;
-    var sectionNum = null;
+    var section = "default";
     if (fullKey.indexOf("&group") !== -1) {
       group = fullKey.split("&group=")[1].split("&")[0];
     }
     if (fullKey.indexOf("&section") !== -1) {
-      sectionNum = fullKey.split("&section=")[1].split("&")[0];
-    }
-    if (fullKey.indexOf("&new") !== -1) {
-      isNew = true;
+      section = fullKey.split("&section=")[1].split("&")[0];
     }
     var key = fullKey.split("&")[0]
 
-    return [key, group, sectionNum, isNew];
+    return [key, group, section];
   }
 
   // First, split elements.
@@ -193,47 +189,44 @@ function orderFigures() {
 
   // Re-run after splitting.
   figOrderLinks = getAllFigureOrderLinks();
-  var groups = {};
   var labelToOrderedLabel = {};
+  var sectionToSectionNumber = {};
   var sectionFigureCount = {};
   var sectionCount = {};
   _.each(figOrderLinks, function(link) {
     var unpackedKey = unpackKey(link);
     var group = unpackedKey[1];
-    groups[group] = true;
     labelToOrderedLabel[group] = {};
+    sectionToSectionNumber[group] = {};
     sectionFigureCount[group] = {};
     sectionCount[group] = 1;
   });
-  groups = _.keys(groups);
+  groups = _.keys(labelToOrderedLabel);
 
+  // Tally up figure sections.
+  _.each(figOrderLinks, function(link) {
+    var unpackedKey = unpackKey(link);
+    var group = unpackedKey[1];
+    var section = unpackedKey[2];
+    if (!sectionToSectionNumber[group].hasOwnProperty(section)) {
+      sectionToSectionNumber[group][section] = sectionCount[group];
+      sectionCount[group] += 1;
+    }
+  });
+
+  // Tally up figures.
   _.each(figOrderLinks, function(link) {
     var unpackedKey = unpackKey(link);
     var key = unpackedKey[0];
     var group = unpackedKey[1];
-    var sectionNum = unpackedKey[2];
-    var isNew = unpackedKey[3];
+    var section = unpackedKey[2];
 
     if (!labelToOrderedLabel[group].hasOwnProperty(key)) {
-      if (sectionNum !== null) {
-        if (!sectionFigureCount[group].hasOwnProperty(sectionNum)) {
-          sectionFigureCount[group][sectionNum] = -1;
-        }
-        sectionFigureCount[group][sectionNum] += 1;
-        labelToOrderedLabel[group][key] = sectionNum + String.fromCharCode(65 + sectionFigureCount[group][sectionNum]);
+      if (!sectionFigureCount[group].hasOwnProperty(section)) {
+        sectionFigureCount[group][section] = 0;
       }
-      else {
-        if (isNew) {
-          sectionCount[group] += 1;
-        }
-        if (!sectionFigureCount[group].hasOwnProperty(sectionCount[group])) {
-          sectionFigureCount[group][sectionCount[group]] = 0;
-        }
-        else {
-          sectionFigureCount[group][sectionCount[group]] += 1;
-        }
-        labelToOrderedLabel[group][key] = sectionCount[group] + String.fromCharCode(65 + sectionFigureCount[group][sectionCount[group]]);
-      }
+      labelToOrderedLabel[group][key] = sectionToSectionNumber[group][section] + String.fromCharCode(65 + sectionFigureCount[group][section]);
+      sectionFigureCount[group][section] += 1;
     }
   });
 
