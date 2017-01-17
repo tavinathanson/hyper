@@ -137,7 +137,12 @@ function replaceUrls() {
     _.each(links, function(link) {
       if (link.url.indexOf(textToReplace) !== -1) {
         var updatedUrl = link.url.replaceAll(textToReplace, newText);
-        link.element.setLinkUrl(link.startOffset, link.endOffsetInclusive, updatedUrl);
+        if (link.element.getType() == DocumentApp.ElementType.INLINE_IMAGE) {
+          link.element.setLinkUrl(updatedUrl);
+        }
+        else {
+          link.element.setLinkUrl(link.startOffset, link.endOffsetInclusive, updatedUrl);
+        }
       }
     });
   }
